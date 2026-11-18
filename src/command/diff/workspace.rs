@@ -18,28 +18,6 @@ pub struct Workspace {
     repositories: Vec<WorkspaceRepository>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ReviewStatus {
-    HasChanges,
-    NoChanges,
-    CannotBeReviewed,
-}
-
-/// The first repository with changes, otherwise the first one that can be reviewed.
-fn first_repository_to_open(statuses: impl Iterator<Item = ReviewStatus>) -> Option<usize> {
-    let mut first_without_changes = None;
-    for (index, status) in statuses.enumerate() {
-        match status {
-            ReviewStatus::HasChanges => return Some(index),
-            ReviewStatus::NoChanges => {
-                first_without_changes.get_or_insert(index);
-            }
-            ReviewStatus::CannotBeReviewed => {}
-        }
-    }
-    first_without_changes
-}
-
 impl Workspace {
     /// Repositories that are immediate child directories of `cwd`, sorted by name.
     /// Symlinks are not followed. Returns `None` when `cwd` is inside a repository
@@ -93,21 +71,22 @@ impl Workspace {
         Ok(backend)
     }
 
+    /// The first repository with changes, otherwise the first one that can be reviewed.
     pub fn initial_repository(&self, options: &DiffOptions) -> Result<usize, String> {
-        let statuses = (0..self.repositories.len()).map(|index| {
+        let mut first_reviewable = None;
+        let mut errors = Vec::new();
+        for index in 0..self.repositories.len() {
             match self.reviewable_backend(index, options) {
-                Ok(backend) if get_changed_files(options, backend).is_empty() => {
-                    ReviewStatus::NoChanges
+                Ok(backend) => {
+                    if !get_changed_files(options, backend).is_empty() {
+                        return Ok(index);
+                    }
+                    first_reviewable.get_or_insert(index);
                 }
-                Ok(_) => ReviewStatus::HasChanges,
-                Err(_) => ReviewStatus::CannotBeReviewed,
+                Err(error) => errors.push(format!("  {}", error)),
             }
-        });
-        first_repository_to_open(statuses).ok_or_else(|| {
-            let errors: Vec<String> = (0..self.repositories.len())
-                .filter_map(|index| self.reviewable_backend(index, options).err())
-                .map(|error| format!("  {}", error))
-                .collect();
+        }
+        first_reviewable.ok_or_else(|| {
             format!(
                 "no repository in this folder can be reviewed:\n{}",
                 errors.join("\n")
@@ -367,24 +346,6 @@ mod tests {
         assert!(Workspace::discover(&repository, None).is_none());
         assert!(Workspace::discover(&repository.join("vendored"), None).is_none());
         let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn test_first_repository_to_open_prefers_the_first_with_changes() {
-        use ReviewStatus::*;
-
-        assert_eq!(
-            first_repository_to_open([NoChanges, HasChanges, HasChanges].into_iter()),
-            Some(1)
-        );
-        assert_eq!(
-            first_repository_to_open([CannotBeReviewed, NoChanges, NoChanges].into_iter()),
-            Some(1)
-        );
-        assert_eq!(
-            first_repository_to_open([CannotBeReviewed, CannotBeReviewed].into_iter()),
-            None
-        );
     }
 
     #[test]

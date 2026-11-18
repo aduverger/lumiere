@@ -70,7 +70,7 @@ async function runInRexSplit(
 		LUMIERE_BIN,
 		...reviewArgs,
 	]);
-	return result.code === 0 ? { status: 0 } : { status: result.code, error: result.stderr.trim() };
+	return { status: result.code, error: result.stderr.trim() };
 }
 
 async function runInPlace(

@@ -889,17 +889,12 @@ fn run_app_internal<'a>(
                                             Ok(repository_backend) => {
                                                 backend = repository_backend;
                                                 pending_watch_event = None;
-                                                (_watch_handle, watch_rx) = (None, None);
-                                                if state.watching {
-                                                    match setup_watcher(backend.working_tree_root())
-                                                    {
-                                                        Some((handle, rx)) => {
-                                                            _watch_handle = Some(handle);
-                                                            watch_rx = Some(rx);
-                                                        }
-                                                        None => state.watching = false,
-                                                    }
-                                                }
+                                                let watcher = state
+                                                    .watching
+                                                    .then(|| setup_watcher(backend.working_tree_root()))
+                                                    .flatten();
+                                                state.watching = watcher.is_some();
+                                                (_watch_handle, watch_rx) = watcher.unzip();
                                             }
                                             Err(error) => {
                                                 active_modal = Some(Modal::info(
