@@ -98,7 +98,7 @@ async fn run() -> Result<(), LumenError> {
                 .await?;
         }
         Commands::List => {
-            eprintln!("Warning: 'lumen list' is deprecated. Use 'lumen explain --list' instead.");
+            eprintln!("Warning: 'lumiere list' is deprecated. Use 'lumiere explain --list' instead.");
             command
                 .execute(command::CommandType::List {
                     backend: backend.as_ref(),

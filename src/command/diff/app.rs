@@ -1871,7 +1871,7 @@ fn run_app_internal(
                                 let n = state.annotations.len();
                                 let noun = if n == 1 { "annotation" } else { "annotations" };
                                 let msg = format!(
-                                    "Exit lumen and write {} {} to stdout?\n\n\
+                                    "Exit lumiere and write {} {} to stdout?\n\n\
                                      Use this to pipe feedback back to a coding agent.",
                                     n, noun,
                                 );
