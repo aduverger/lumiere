@@ -320,6 +320,7 @@ fn run_app_internal(
             CommitReference::Range { from, to } => format!("{}..{}", from, to),
             CommitReference::TripleDots { from, to } => format!("{}...{}", from, to),
             CommitReference::RangeToWorkingTree { from } => format!("{}..-", from),
+            CommitReference::MergeBaseToWorkingTree { from } => format!("{}...-", from),
         })
     };
     state.set_diff_reference(diff_ref_str);
@@ -359,7 +360,7 @@ fn run_app_internal(
 
     state.watching = options.watch && pr_info.is_none();
     let (mut _watch_handle, mut watch_rx) = if state.watching && pr_info.is_none() {
-        if let Some((handle, rx)) = setup_watcher() {
+        if let Some((handle, rx)) = setup_watcher(backend.working_tree_root()) {
             (Some(handle), Some(rx))
         } else {
             state.watching = false;
@@ -1458,7 +1459,9 @@ fn run_app_internal(
                             } else {
                                 state.watching = !state.watching;
                                 if state.watching {
-                                    if let Some((handle, rx)) = setup_watcher() {
+                                    if let Some((handle, rx)) =
+                                        setup_watcher(backend.working_tree_root())
+                                    {
                                         _watch_handle = Some(handle);
                                         watch_rx = Some(rx);
                                     } else {
@@ -1938,15 +1941,12 @@ fn run_app_internal(
                                     None
                                 };
 
-                                let status = if let Some(line) = line_arg {
-                                    std::process::Command::new(&editor)
-                                        .arg(format!("+{}", line))
-                                        .arg(filename)
-                                        .status()
-                                } else {
-                                    std::process::Command::new(&editor).arg(filename).status()
-                                };
-                                let _ = status;
+                                let mut editor_command = std::process::Command::new(&editor);
+                                editor_command.current_dir(backend.working_tree_root());
+                                if let Some(line) = line_arg {
+                                    editor_command.arg(format!("+{}", line));
+                                }
+                                let _ = editor_command.arg(filename).status();
 
                                 enable_raw_mode()?;
                                 execute!(
