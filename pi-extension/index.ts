@@ -7,7 +7,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { closeSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -17,8 +17,10 @@ const DEFAULT_REVIEW_ARGS = ["diff", "origin/main...-"];
 const REX_SPLIT_DIRECTION = "right";
 const REX_SPLIT_RATIO = "70";
 
-/** Runs the command given as arguments with stdout redirected to the file named by `$0`. */
-const REDIRECT_STDOUT_TO_ARG0 = '"$@" > "$0"';
+/** Runs the command given as arguments with stdout redirected to the file named by `$0` and stderr to `$1`. */
+const REDIRECT_OUTPUT_TO_FIRST_ARGS = 'out="$0"; err="$1"; shift; "$@" > "$out" 2> "$err"';
+
+const ANSI_STYLE = /\x1b\[[0-9;]*m/g;
 
 const REVIEW_PROMPT = `I reviewed the changes in Lumiere and left the comments below.
 
@@ -49,6 +51,7 @@ async function runInRexSplit(
 	cwd: string,
 	reviewArgs: string[],
 	annotationsPath: string,
+	errorsPath: string,
 ): Promise<ReviewRun> {
 	const result = await pi.exec("rex", [
 		"split",
@@ -65,8 +68,9 @@ async function runInRexSplit(
 		"--",
 		"sh",
 		"-c",
-		REDIRECT_STDOUT_TO_ARG0,
+		REDIRECT_OUTPUT_TO_FIRST_ARGS,
 		annotationsPath,
+		errorsPath,
 		LUMIERE_BIN,
 		...reviewArgs,
 	]);
@@ -77,6 +81,7 @@ async function runInPlace(
 	ctx: ExtensionCommandContext,
 	reviewArgs: string[],
 	annotationsPath: string,
+	errorsPath: string,
 ): Promise<ReviewRun> {
 	const run = await ctx.ui.custom<ReviewRun>((tui, _theme, _keybindings, done) => {
 		tui.stop();
@@ -84,11 +89,13 @@ async function runInPlace(
 
 		// Lumiere draws on /dev/tty when its stdout is not a terminal.
 		const annotationsFile = openSync(annotationsPath, "w");
+		const errorsFile = openSync(errorsPath, "w");
 		const result = spawnSync(LUMIERE_BIN, reviewArgs, {
 			cwd: ctx.cwd,
-			stdio: ["inherit", annotationsFile, "inherit"],
+			stdio: ["inherit", annotationsFile, errorsFile],
 		});
 		closeSync(annotationsFile);
+		closeSync(errorsFile);
 
 		tui.start();
 		tui.requestRender(true);
@@ -112,14 +119,19 @@ async function review(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: stri
 	const reviewArgs = args.trim() ? args.trim().split(/\s+/) : DEFAULT_REVIEW_ARGS;
 	const tempDir = mkdtempSync(join(tmpdir(), "lumiere-"));
 	const annotationsPath = join(tempDir, "annotations.md");
+	const errorsPath = join(tempDir, "errors.txt");
 	try {
 		const pane = await rexPane(pi);
 		const run = pane
-			? await runInRexSplit(pi, pane, ctx.cwd, reviewArgs, annotationsPath)
-			: await runInPlace(ctx, reviewArgs, annotationsPath);
+			? await runInRexSplit(pi, pane, ctx.cwd, reviewArgs, annotationsPath, errorsPath)
+			: await runInPlace(ctx, reviewArgs, annotationsPath, errorsPath);
 
 		if (run.status !== 0) {
-			const detail = run.error ? `: ${run.error}` : "";
+			const lumiereErrors = existsSync(errorsPath)
+				? readFileSync(errorsPath, "utf8").replace(ANSI_STYLE, "").trim()
+				: "";
+			const reason = lumiereErrors || run.error;
+			const detail = reason ? `: ${reason}` : "";
 			ctx.ui.notify(`lumiere did not finish (status ${run.status})${detail}`, "error");
 			return;
 		}

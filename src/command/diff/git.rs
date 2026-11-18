@@ -923,6 +923,16 @@ mod tests {
         let uncommitted = diffs.iter().find(|d| d.filename == "uncommitted.txt").unwrap();
         assert_eq!(uncommitted.new_content, "uncommitted\n");
 
+        assert_eq!(
+            validate_reference(
+                Some(&CommitReference::MergeBaseToWorkingTree {
+                    from: "missing".to_string(),
+                }),
+                &backend,
+            ),
+            Err("invalid reference: missing".to_string()),
+        );
+
         let _ = fs::remove_dir_all(&dir);
     }
 }

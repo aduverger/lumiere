@@ -432,6 +432,14 @@ pub fn run_diff_ui(mut options: DiffOptions, backend: &dyn VcsBackend) -> io::Re
         }
     }
 
+    // A missing base revision would otherwise be reviewed as a partial or empty diff.
+    if let Some(CommitReference::MergeBaseToWorkingTree { .. }) = options.reference {
+        if let Err(e) = git::validate_reference(options.reference.as_ref(), backend) {
+            eprintln!("\x1b[91merror:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    }
+
     // Handle stacked mode for range references
     if options.stacked {
         if let Some(ref reference) = options.reference {
