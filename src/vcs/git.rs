@@ -146,7 +146,7 @@ impl GitBackend {
             }
             Err(error) => {
                 // Print libgit2 so there is a chance to diagnose any errors with git
-                println!("Error on repository discovery: {error:?}");
+                eprintln!("Error on repository discovery: {error:?}");
                 return Err(VcsError::NotARepository)
             },
         };

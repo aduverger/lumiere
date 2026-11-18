@@ -40,7 +40,9 @@ async fn run() -> Result<(), LumenError> {
     // Get VCS backend based on CLI override or auto-detection
     let cwd = std::env::current_dir()?;
     let vcs_override = cli.vcs.map(VcsBackendType::from);
-    let backend = vcs::get_backend(&cwd, vcs_override)?;
+    // Every command runs inside a repository, except `diff`, which also accepts
+    // a folder of repositories.
+    let open_backend = || vcs::get_backend(&cwd, vcs_override);
 
     match cli.command {
         Commands::Explain {
@@ -49,6 +51,7 @@ async fn run() -> Result<(), LumenError> {
             query,
             list,
         } => {
+            let backend = open_backend()?;
             let git_entity = if list {
                 let sha = LumenCommand::get_sha_from_fzf(backend.as_ref())?;
                 let info = backend.get_commit(&sha)?;
@@ -93,6 +96,7 @@ async fn run() -> Result<(), LumenError> {
                 .await?;
         }
         Commands::List => {
+            let backend = open_backend()?;
             eprintln!("Warning: 'lumiere list' is deprecated. Use 'lumiere explain --list' instead.");
             command
                 .execute(command::CommandType::List {
@@ -102,6 +106,7 @@ async fn run() -> Result<(), LumenError> {
         }
         Commands::Draft { context } => {
             // Draft always uses staged diff (git convention)
+            let backend = open_backend()?;
             let diff = backend.get_working_tree_diff(true)?;
             let git_entity = GitEntity::Diff(Diff::from_working_tree_diff(diff, true)?);
             command
@@ -113,6 +118,7 @@ async fn run() -> Result<(), LumenError> {
                 .await?
         }
         Commands::Operate { query } => {
+            open_backend()?;
             command
                 .execute(command::CommandType::Operate { query })
                 .await?;
@@ -141,9 +147,13 @@ async fn run() -> Result<(), LumenError> {
                 origin,
                 wrap: wrap || config.wrap.unwrap_or(false),
             };
-            command::diff::run_diff_ui(options, backend.as_ref())?;
+            match command::diff::Workspace::discover(&cwd, vcs_override) {
+                Some(workspace) => command::diff::run_workspace_diff_ui(options, &workspace)?,
+                None => command::diff::run_diff_ui(options, open_backend()?.as_ref())?,
+            }
         }
         Commands::Configure => {
+            open_backend()?;
             command::configure::ConfigureCommand::execute()?;
         }
     }

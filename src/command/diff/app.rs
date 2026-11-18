@@ -52,6 +52,7 @@ use super::types::{
     SelectionMode, SidebarItem,
 };
 use super::watcher::{setup_watcher, WatchEvent};
+use super::workspace::{Workspace, WorkspaceSession};
 use super::{
     fetch_viewed_files, mark_file_as_viewed_async, unmark_file_as_viewed_async, DiffOptions, PrInfo,
 };
@@ -256,7 +257,9 @@ pub fn run_app_with_pr(
     backend: &dyn VcsBackend,
 ) -> io::Result<()> {
     match load_pr_file_diffs(&pr_info) {
-        Ok(file_diffs) => run_app_internal(options, Some(pr_info), file_diffs, None, backend),
+        Ok(file_diffs) => {
+            run_app_internal(options, Some(pr_info), file_diffs, None, backend, None)
+        }
         Err(_) => std::process::exit(1),
     }
 }
@@ -267,7 +270,41 @@ pub fn run_app(
     backend: &dyn VcsBackend,
 ) -> io::Result<()> {
     let file_diffs = load_file_diffs(&options, backend);
-    run_app_internal(options, pr_info, file_diffs, None, backend)
+    run_app_internal(options, pr_info, file_diffs, None, backend, None)
+}
+
+pub fn run_app_in_workspace(
+    options: DiffOptions,
+    workspace: &Workspace,
+    initial_repository: usize,
+) -> io::Result<()> {
+    let backend = workspace
+        .backend(initial_repository)
+        .map_err(io::Error::other)?;
+    let file_diffs = load_file_diffs(&options, backend);
+    let session = WorkspaceSession::new(workspace, initial_repository);
+    run_app_internal(options, None, file_diffs, None, backend, Some(session))
+}
+
+/// Review state for one repository, before any user interaction.
+pub(super) fn new_review_state(
+    options: &DiffOptions,
+    file_diffs: Vec<super::types::FileDiff>,
+    backend: &dyn VcsBackend,
+    focus_file: Option<&str>,
+) -> AppState {
+    let mut state = AppState::new(file_diffs, focus_file);
+    state.settings.wrap = options.wrap;
+    state.set_vcs_name(backend.name());
+    // Diff reference for annotation export context
+    state.set_diff_reference(options.reference.as_ref().map(|r| match r {
+        CommitReference::Single(s) => s.clone(),
+        CommitReference::Range { from, to } => format!("{}..{}", from, to),
+        CommitReference::TripleDots { from, to } => format!("{}...{}", from, to),
+        CommitReference::RangeToWorkingTree { from } => format!("{}..-", from),
+        CommitReference::MergeBaseToWorkingTree { from } => format!("{}...-", from),
+    }));
+    state
 }
 
 pub fn run_app_stacked(
@@ -278,7 +315,7 @@ pub fn run_app_stacked(
     // Load the first commit's diff
     let first_commit = &commits[0];
     let file_diffs = load_single_commit_diffs(&first_commit.commit_id, &options.file, backend);
-    run_app_internal(options, None, file_diffs, Some(commits), backend)
+    run_app_internal(options, None, file_diffs, Some(commits), backend, None)
 }
 
 /// Sync viewed files from GitHub to local state
@@ -293,37 +330,25 @@ fn sync_viewed_files_from_github(pr_info: &PrInfo, state: &mut AppState) {
     }
 }
 
-fn run_app_internal(
+fn run_app_internal<'a>(
     options: DiffOptions,
     pr_info: Option<PrInfo>,
     file_diffs: Vec<super::types::FileDiff>,
     stacked_commits: Option<Vec<StackedCommitInfo>>,
-    backend: &dyn VcsBackend,
+    mut backend: &'a dyn VcsBackend,
+    mut workspace_session: Option<WorkspaceSession<'a>>,
 ) -> io::Result<()> {
     theme::init(options.theme.as_deref());
     highlight::init();
 
     // Initialize state before TUI so we can sync viewed files
-    let mut state = AppState::new(file_diffs, options.focus.as_deref());
-    state.settings.wrap = options.wrap;
-    state.set_vcs_name(backend.name());
-
-    // Set diff reference for annotation export context
-    let diff_ref_str = if let Some(pr) = &pr_info {
-        Some(format!(
+    let mut state = new_review_state(&options, file_diffs, backend, options.focus.as_deref());
+    if let Some(pr) = &pr_info {
+        state.set_diff_reference(Some(format!(
             "PR #{} ({}...{})",
             pr.number, pr.base_ref, pr.head_ref
-        ))
-    } else {
-        options.reference.as_ref().map(|r| match r {
-            CommitReference::Single(s) => s.clone(),
-            CommitReference::Range { from, to } => format!("{}..{}", from, to),
-            CommitReference::TripleDots { from, to } => format!("{}...{}", from, to),
-            CommitReference::RangeToWorkingTree { from } => format!("{}..-", from),
-            CommitReference::MergeBaseToWorkingTree { from } => format!("{}...-", from),
-        })
-    };
-    state.set_diff_reference(diff_ref_str);
+        )));
+    }
 
     // Initialize stacked mode if commits were provided
     if let Some(commits) = stacked_commits {
@@ -414,7 +439,11 @@ fn run_app_internal(
 
         if state.file_diffs.is_empty() {
             terminal.draw(|frame| {
-                render_empty_state(frame, state.watching);
+                render_empty_state(
+                    frame,
+                    state.watching,
+                    workspace_session.as_ref().map(|session| session.active_name()),
+                );
                 if let Some(ref modal) = active_modal {
                     modal.render(frame);
                 }
@@ -437,6 +466,10 @@ fn run_app_internal(
                 .unwrap_or(&empty_viewed_hunks);
             let branch_fallback = get_current_branch(backend);
             let commit_ref = state.diff_reference.as_deref().unwrap_or(&branch_fallback);
+            let workspace_commit_ref = workspace_session
+                .as_ref()
+                .map(|session| format!("{} · {}", session.active_name(), commit_ref));
+            let commit_ref = workspace_commit_ref.as_deref().unwrap_or(commit_ref);
             let row_offset = std::cell::Cell::new(0usize);
             let gaps_cell = std::cell::RefCell::new(Vec::new());
             let rects_cell = std::cell::RefCell::new(Vec::new());
@@ -845,7 +878,39 @@ fn run_app_internal(
                                     state.scroll = (sbs_line_index as u16).min(max_scroll);
                                     active_modal = None;
                                 }
-                                ModalResult::Dismissed | ModalResult::Selected(_, _) => {
+                                ModalResult::Selected(repository_index, _) => {
+                                    active_modal = None;
+                                    if let Some(session) = workspace_session.as_mut() {
+                                        match session.switch_to(
+                                            repository_index,
+                                            &options,
+                                            &mut state,
+                                        ) {
+                                            Ok(repository_backend) => {
+                                                backend = repository_backend;
+                                                pending_watch_event = None;
+                                                (_watch_handle, watch_rx) = (None, None);
+                                                if state.watching {
+                                                    match setup_watcher(backend.working_tree_root())
+                                                    {
+                                                        Some((handle, rx)) => {
+                                                            _watch_handle = Some(handle);
+                                                            watch_rx = Some(rx);
+                                                        }
+                                                        None => state.watching = false,
+                                                    }
+                                                }
+                                            }
+                                            Err(error) => {
+                                                active_modal = Some(Modal::info(
+                                                    "Cannot open repository",
+                                                    error,
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
+                                ModalResult::Dismissed => {
                                     active_modal = None;
                                 }
                             }
@@ -1869,9 +1934,21 @@ fn run_app_internal(
                         KeyCode::Char('r') => {
                             state.needs_reload = true;
                         }
+                        KeyCode::Char('R') => {
+                            if let Some(session) = &workspace_session {
+                                active_modal = Some(Modal::select(
+                                    "Repositories",
+                                    session.picker_items(&state),
+                                    session.active(),
+                                ));
+                            }
+                        }
                         KeyCode::Char('s') => {
-                            if !state.annotations.is_empty() {
-                                let n = state.annotations.len();
+                            let n = match &workspace_session {
+                                Some(session) => session.annotation_count(&state),
+                                None => state.annotations.len(),
+                            };
+                            if n > 0 {
                                 let noun = if n == 1 { "annotation" } else { "annotations" };
                                 let msg = format!(
                                     "Exit lumiere and write {} {} to stdout?\n\n\
@@ -2034,6 +2111,10 @@ fn run_app_internal(
                                             KeyBind {
                                                 key: "tab",
                                                 description: "Toggle sidebar",
+                                            },
+                                            KeyBind {
+                                                key: "R",
+                                                description: "Switch repository (workspace folder)",
                                             },
                                             KeyBind {
                                                 key: "1 / 2",
@@ -2214,7 +2295,10 @@ fn run_app_internal(
     disable_raw_mode()?;
 
     if send_annotations_on_exit {
-        let formatted = state.format_annotations_for_export();
+        let formatted = match &workspace_session {
+            Some(session) => session.format_annotations_for_export(&state),
+            None => state.format_annotations_for_export(),
+        };
         let stdout = io::stdout();
         let mut handle = stdout.lock();
         handle.write_all(formatted.as_bytes())?;

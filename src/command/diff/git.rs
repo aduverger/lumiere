@@ -74,6 +74,27 @@ impl DiffRefs {
     }
 }
 
+/// Check that every revision named by `reference` exists in this repository.
+pub fn validate_reference(
+    reference: Option<&CommitReference>,
+    backend: &dyn VcsBackend,
+) -> Result<(), String> {
+    let revisions: Vec<&String> = match reference {
+        None => Vec::new(),
+        Some(CommitReference::Single(revision)) => vec![revision],
+        Some(CommitReference::Range { from, to })
+        | Some(CommitReference::TripleDots { from, to }) => vec![from, to],
+        Some(CommitReference::RangeToWorkingTree { from })
+        | Some(CommitReference::MergeBaseToWorkingTree { from }) => vec![from],
+    };
+    for revision in revisions {
+        backend
+            .resolve_ref(revision)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
 /// Get the list of files changed
 pub fn get_changed_files(options: &DiffOptions, backend: &dyn VcsBackend) -> Vec<String> {
     let refs = DiffRefs::from_options(options, backend);
