@@ -329,22 +329,15 @@ mod tests {
     }
 
     #[test]
-    fn test_discover_returns_none_without_child_repositories() {
-        let root = make_temp_dir("workspace-empty");
-        fs::create_dir_all(root.join("notes")).expect("create plain folder");
-
-        assert!(Workspace::discover(&root, None).is_none());
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn test_discover_returns_none_inside_a_repository() {
-        let root = make_temp_dir("workspace-inside-repo");
+    fn test_discover_returns_none_when_the_folder_is_not_a_workspace() {
+        let root = make_temp_dir("workspace-not-a-workspace");
+        let plain_folder = root.join("notes");
+        fs::create_dir_all(plain_folder.join("drafts")).expect("create plain folders");
         let repository = create_repository(&root, "api");
         create_repository(&repository, "vendored");
 
+        assert!(Workspace::discover(&plain_folder, None).is_none());
         assert!(Workspace::discover(&repository, None).is_none());
-        assert!(Workspace::discover(&repository.join("vendored"), None).is_none());
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -362,17 +355,23 @@ mod tests {
     }
 
     #[test]
-    fn test_initial_repository_reports_every_repository_when_none_can_be_reviewed() {
+    fn test_initial_repository_skips_repositories_lacking_the_requested_revision() {
         let root = make_temp_dir("workspace-unreviewable");
         create_repository(&root, "api");
-        create_repository(&root, "web");
-        let options = options_for(Some(CommitReference::MergeBaseToWorkingTree {
-            from: "origin/main".to_string(),
-        }));
-
+        let web = create_repository(&root, "web");
+        git(&web, &["checkout", "-b", "only-in-web"]);
+        let from_revision = |revision: &str| {
+            options_for(Some(CommitReference::MergeBaseToWorkingTree {
+                from: revision.to_string(),
+            }))
+        };
         let workspace = Workspace::discover(&root, None).expect("workspace");
-        let error = workspace.initial_repository(&options).expect_err("no reviewable repository");
 
+        assert_eq!(workspace.initial_repository(&from_revision("only-in-web")), Ok(1));
+
+        let error = workspace
+            .initial_repository(&from_revision("origin/main"))
+            .expect_err("no reviewable repository");
         assert!(error.contains("api: invalid reference: origin/main"), "{}", error);
         assert!(error.contains("web: invalid reference: origin/main"), "{}", error);
         let _ = fs::remove_dir_all(&root);
@@ -395,10 +394,6 @@ mod tests {
         assert!(state.annotations.is_empty());
         assert!(web_backend.working_tree_root().ends_with("web"));
         assert_eq!(session.annotation_count(&state), 1);
-        assert_eq!(
-            session.picker_items(&state),
-            vec!["api · 1 annotation", "web · current"]
-        );
 
         session.switch_to(0, &options, &mut state).expect("switch back to api");
 

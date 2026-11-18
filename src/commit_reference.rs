@@ -171,10 +171,6 @@ mod tests {
                 from: "origin/main".to_string(),
             }
         );
-    }
-
-    #[test]
-    fn test_merge_base_to_working_tree_empty_from() {
         assert_eq!(
             "...-".parse::<CommitReference>().unwrap(),
             CommitReference::MergeBaseToWorkingTree {
