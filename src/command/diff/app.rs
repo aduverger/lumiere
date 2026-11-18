@@ -2015,6 +2015,18 @@ fn run_app_internal<'a>(
 
                                 let mut editor_command = std::process::Command::new(&editor);
                                 editor_command.current_dir(backend.working_tree_root());
+                                // Captured stdout is reserved for the annotations, so the
+                                // editor draws on the terminal, as the TUI does.
+                                #[cfg(unix)]
+                                if !io::stdout().is_terminal() {
+                                    if let Ok(tty) = std::fs::OpenOptions::new()
+                                        .read(true)
+                                        .write(true)
+                                        .open("/dev/tty")
+                                    {
+                                        editor_command.stdout(tty);
+                                    }
+                                }
                                 if let Some(line) = line_arg {
                                     editor_command.arg(format!("+{}", line));
                                 }
