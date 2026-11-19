@@ -362,6 +362,13 @@ fn save_comment(state: &mut AppState, editor: &AnnotationEditor) -> Option<(Stri
     }
 }
 
+/// Removes the comment the editor was changing, when it was changing one.
+fn remove_edited_comment(state: &mut AppState, editor: &AnnotationEditor) {
+    if let (Some(thread_id), Some(comment_id)) = (&editor.thread_id, &editor.comment_id) {
+        state.remove_comment(thread_id, comment_id);
+    }
+}
+
 fn queued_total(state: &AppState, workspace_session: Option<&WorkspaceSession>) -> usize {
     match workspace_session {
         Some(session) => session.queued_count(state),
@@ -926,11 +933,7 @@ fn run_app_internal<'a>(
                                 notice = Some((message, Instant::now()));
                             }
                             AnnotationEditorResult::Delete => {
-                                if let (Some(thread_id), Some(comment_id)) =
-                                    (&editor.thread_id, &editor.comment_id)
-                                {
-                                    state.remove_comment(thread_id, comment_id);
-                                }
+                                remove_edited_comment(&mut state, editor);
                                 annotation_editor = None;
                             }
                             AnnotationEditorResult::Cancel => {
@@ -1204,12 +1207,10 @@ fn run_app_internal<'a>(
                                     .unwrap_or(false);
                                 if !inside {
                                     if let Some(editor) = annotation_editor.as_ref() {
-                                        if !editor.is_empty() {
+                                        if editor.is_empty() {
+                                            remove_edited_comment(&mut state, editor);
+                                        } else {
                                             save_comment(&mut state, editor);
-                                        } else if let (Some(thread_id), Some(comment_id)) =
-                                            (&editor.thread_id, &editor.comment_id)
-                                        {
-                                            state.remove_comment(thread_id, comment_id);
                                         }
                                     }
                                     annotation_editor = None;

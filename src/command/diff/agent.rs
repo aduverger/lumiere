@@ -161,24 +161,32 @@ fn runs_agent(program: &PaneProgram) -> bool {
     program.argv0 == AGENT_PROGRAM
 }
 
+/// Whether the agent is the foreground program of the pane right now.
+fn pane_runs_agent(rex: &dyn Rex, session: &str, block: &str) -> bool {
+    rex.foreground_program(session, block)
+        .is_some_and(|program| runs_agent(&program))
+}
+
+/// The pane `block`, when the agent is its foreground program.
+fn agent_pane_at(rex: &dyn Rex, session: &RexSession, block: &str) -> Option<AgentPane> {
+    let program = rex.foreground_program(&session.id, block).filter(runs_agent)?;
+    Some(AgentPane {
+        status: rex.program_status(&session.id, block).unwrap_or_default(),
+        session: session.id.clone(),
+        session_label: session.label.clone(),
+        block: block.to_string(),
+        cwd: program.cwd,
+    })
+}
+
 /// Panes running the agent in one of `review_roots`, most recently active first.
 fn find_agent_panes(rex: &dyn Rex, review_roots: &[PathBuf]) -> Vec<AgentPane> {
     let mut panes = Vec::new();
     for session in rex.sessions() {
         for block in rex.terminal_blocks(&session.id) {
-            let Some(program) = rex.foreground_program(&session.id, &block) else {
-                continue;
-            };
-            if !runs_agent(&program) || !review_roots.contains(&program.cwd) {
-                continue;
-            }
-            panes.push(AgentPane {
-                status: rex.program_status(&session.id, &block).unwrap_or_default(),
-                session: session.id.clone(),
-                session_label: session.label.clone(),
-                block,
-                cwd: program.cwd,
-            });
+            let pane = agent_pane_at(rex, &session, &block)
+                .filter(|pane| review_roots.contains(&pane.cwd));
+            panes.extend(pane);
         }
     }
     panes.sort_by(|a, b| b.status.updated_at.cmp(&a.status.updated_at));
@@ -217,16 +225,13 @@ impl<'r> AgentLink<'r> {
         review_path: PathBuf,
     ) -> Self {
         let pane = match (agent_block, current_session) {
-            (Some(block), Some(session)) => rex
-                .foreground_program(session, block)
-                .filter(runs_agent)
-                .map(|program| AgentPane {
-                    status: rex.program_status(session, block).unwrap_or_default(),
-                    session: session.to_string(),
-                    session_label: String::new(),
-                    block: block.to_string(),
-                    cwd: program.cwd,
-                }),
+            (Some(block), Some(session)) => {
+                let current_session = RexSession {
+                    id: session.to_string(),
+                    label: String::new(),
+                };
+                agent_pane_at(rex, &current_session, block)
+            }
             (Some(_), None) => None,
             (None, _) => find_agent_panes(rex, review_roots).into_iter().next(),
         };
@@ -267,18 +272,13 @@ impl<'r> AgentLink<'r> {
         let Some(pane) = &mut self.pane else {
             return;
         };
-        match self
-            .rex
-            .foreground_program(&pane.session, &pane.block)
-            .filter(runs_agent)
-        {
-            Some(_) => {
-                pane.status = self
-                    .rex
-                    .program_status(&pane.session, &pane.block)
-                    .unwrap_or_default();
-            }
-            None => self.pane = None,
+        if pane_runs_agent(self.rex, &pane.session, &pane.block) {
+            pane.status = self
+                .rex
+                .program_status(&pane.session, &pane.block)
+                .unwrap_or_default();
+        } else {
+            self.pane = None;
         }
     }
 
@@ -289,11 +289,7 @@ impl<'r> AgentLink<'r> {
         let Some(pane) = &self.pane else {
             return Err("no agent attached".to_string());
         };
-        let still_runs_agent = self
-            .rex
-            .foreground_program(&pane.session, &pane.block)
-            .is_some_and(|program| runs_agent(&program));
-        if !still_runs_agent {
+        if !pane_runs_agent(self.rex, &pane.session, &pane.block) {
             self.pane = None;
             return Err(format!("the pane no longer runs {}", AGENT_PROGRAM));
         }
