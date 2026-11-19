@@ -307,40 +307,32 @@ fn target_at_cursor(state: &mut AppState) -> Option<(String, AnnotationTarget)> 
     let Some(hunk_index) = state.focused_hunk else {
         return Some((filename, AnnotationTarget::File));
     };
-    let hunk_panel = if is_deleted {
-        DiffPanelFocus::Old
-    } else {
-        DiffPanelFocus::New
-    };
 
     state.ensure_cache();
-    let sbs = state.side_by_side_ref();
-    let hunks = state.hunks_ref();
-    let hunk_start = hunks.get(hunk_index).copied().unwrap_or(0);
-    let next_hunk_start = hunks.get(hunk_index + 1).copied().unwrap_or(sbs.len());
-
-    let mut actual_hunk_end = hunk_start;
-    for i in hunk_start..next_hunk_start {
-        if let Some(dl) = sbs.get(i) {
-            if !matches!(dl.change_type, ChangeType::Equal) {
-                actual_hunk_end = i;
-            }
-        }
-    }
-
-    let line_num = |dl: &super::types::DiffLine| {
-        dl.line_number(hunk_panel)
-            .or_else(|| dl.line_number(DiffPanelFocus::Old))
+    let rows = state.side_by_side_ref();
+    let hunk_start = state.hunks_ref().get(hunk_index).copied().unwrap_or(0);
+    let hunk_rows = || {
+        rows.iter()
+            .skip(hunk_start)
+            .take_while(|row| !matches!(row.change_type, ChangeType::Equal))
     };
-    let start_line = sbs.get(hunk_start).and_then(line_num).unwrap_or(1);
-    let end_line = sbs
-        .get(actual_hunk_end)
-        .and_then(line_num)
-        .unwrap_or(start_line);
+    // The lines the hunk has on the new side. Rows that only remove lines have none
+    // there, so a hunk that only removes is commented on the old side.
+    let lines_on = |panel: DiffPanelFocus| {
+        let mut lines = hunk_rows().filter_map(move |row| row.line_number(panel));
+        let start_line = lines.next()?;
+        Some((panel, start_line, lines.last().unwrap_or(start_line)))
+    };
+    let (panel, start_line, end_line) = if is_deleted {
+        lines_on(DiffPanelFocus::Old)
+    } else {
+        lines_on(DiffPanelFocus::New).or_else(|| lines_on(DiffPanelFocus::Old))
+    }
+    .unwrap_or((DiffPanelFocus::New, 1, 1));
     Some((
         filename,
         AnnotationTarget::LineRange {
-            panel: hunk_panel,
+            panel,
             start_line,
             end_line,
         },
@@ -2612,6 +2604,50 @@ mod tests {
         );
         // An unclosed quote cannot be split: the value is tried as it is.
         assert_eq!(editor_words("it's"), ["it's"]);
+    }
+
+    fn state_with_file(old_content: &str, new_content: &str) -> AppState {
+        AppState::new(
+            vec![FileDiff {
+                filename: "a.rs".to_string(),
+                old_content: old_content.to_string(),
+                new_content: new_content.to_string(),
+                status: FileStatus::Modified,
+                is_binary: false,
+            }],
+            None,
+        )
+    }
+
+    #[test]
+    fn test_a_comment_on_the_focused_hunk_covers_the_lines_of_that_hunk() {
+        let hunk_target = |old_content: &str, new_content: &str| {
+            let mut state = state_with_file(old_content, new_content);
+            assert_eq!(state.focused_hunk, Some(0));
+            target_at_cursor(&mut state).expect("target").1
+        };
+        let lines = |panel, start_line, end_line| AnnotationTarget::LineRange {
+            panel,
+            start_line,
+            end_line,
+        };
+
+        // Two lines replace four: the removed lines that have no new line beside them
+        // do not stretch the range, nor lend it their old line numbers.
+        assert_eq!(
+            hunk_target("keep\nkeep\na\nb\nc\nd\nend\n", "keep\nkeep\nA\nB\nend\n"),
+            lines(DiffPanelFocus::New, 3, 4)
+        );
+        // Lines are only added.
+        assert_eq!(
+            hunk_target("keep\nend\n", "keep\nnew 1\nnew 2\nend\n"),
+            lines(DiffPanelFocus::New, 2, 3)
+        );
+        // Lines are only removed: the comment is on the old side.
+        assert_eq!(
+            hunk_target("keep\ngone 1\ngone 2\nend\n", "keep\nend\n"),
+            lines(DiffPanelFocus::Old, 2, 3)
+        );
     }
 
     #[test]
