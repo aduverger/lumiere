@@ -64,8 +64,8 @@ the thread while Lumiere stays open.
 |---|---|
 | `i` | Comment, or reply when the lines already have an open thread. An unsent comment is edited instead. |
 | `Enter` | Save the comment and send it to the agent now. |
-| `Ctrl+Enter`, `Ctrl+S` | Save the comment as queued. Use `Ctrl+S` where the terminal reports `Ctrl+Enter` as `Enter`. |
-| `Shift+Enter`, `Alt+Enter`, `Ctrl+J` | New line. |
+| `Alt+Enter` (Option+Enter), `Ctrl+S` | Save the comment as queued, as `Alt+Enter` queues a message in pi. Use `Ctrl+S` where the terminal does not report `Alt+Enter`. |
+| `Shift+Enter`, `Ctrl+Enter`, `Ctrl+J` | New line. |
 | `s` | Send every queued comment, as one message. Lumiere stays open. |
 | `x` | Resolve or reopen the thread on the selection, hunk or file. Replying to a resolved thread reopens it. |
 | `A` | Choose the agent, or none. |
@@ -75,10 +75,11 @@ the thread while Lumiere stays open.
   directory is a reviewed repository or the folder Lumiere was started from, and
   attaches to the most recently active one. `--agent-block BLOCK` names the pane
   instead. The footer shows the agent and its state, or `no agent`.
-- **Sending.** Lumiere types one line into the agent's prompt, asking it to read the
-  waiting threads with the binary that runs the review, named by its full path.
-  Comment text is never typed. Just before typing, Lumiere checks
-  that the pane still runs `pi`; if not, nothing is typed and the comments stay queued.
+- **Sending.** Lumiere pastes one message into the agent's prompt and submits it. The
+  message holds each comment with its thread id, file, lines and the code it is about,
+  and the reply command of the binary that runs the review, named by its full path. The
+  agent can answer without looking anything up. Just before pasting, Lumiere checks
+  that the pane still runs `pi`; if not, nothing is sent and the comments stay queued.
 - **Without an agent** (no Rex, or `none` chosen) `Enter` queues, and `s` asks to exit
   and write the queued comments to stdout, as upstream does with annotations.
 - **Quitting with queued comments** asks whether to send them, keep them queued or

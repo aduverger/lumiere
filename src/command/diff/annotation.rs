@@ -121,15 +121,16 @@ impl<'a> AnnotationEditor<'a> {
                 AnnotationEditorResult::Cancel
             }
 
-            // Ctrl+S queues too, for terminals that report Ctrl+Enter as plain Enter.
+            // Ctrl+S queues too, for terminals that do not report Alt+Enter.
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.finish(AnnotationEditorResult::Queue)
             }
 
             KeyCode::Enter => {
-                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                // Alt+Enter queues, as it queues a follow-up message in pi.
+                if key.modifiers.contains(KeyModifiers::ALT) {
                     self.finish(AnnotationEditorResult::Queue)
-                } else if key.modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT) {
+                } else if key.modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL) {
                     self.textarea.insert_char('\n');
                     AnnotationEditorResult::Continue
                 } else {
@@ -262,7 +263,7 @@ impl<'a> AnnotationEditor<'a> {
             Span::styled("Enter", key_style),
             Span::styled(" send", label_style),
             Span::styled(" . ", sep_style),
-            Span::styled("Ctrl+Enter", key_style),
+            Span::styled("Alt+Enter", key_style),
             Span::styled(" queue", label_style),
             Span::styled(" . ", sep_style),
             Span::styled("Esc", key_style),
@@ -301,25 +302,25 @@ mod tests {
     }
 
     #[test]
-    fn test_enter_sends_and_ctrl_enter_or_ctrl_s_queue_unless_the_comment_is_empty() {
+    fn test_enter_sends_and_alt_enter_or_ctrl_s_queue_unless_the_comment_is_empty() {
         let mut editor = editor_with("note");
 
         assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::NONE), "send");
-        assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::CONTROL), "queue");
+        assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::ALT), "queue");
         assert_eq!(press(&mut editor, KeyCode::Char('s'), KeyModifiers::CONTROL), "queue");
 
         let mut empty_editor = editor_with("  ");
 
         assert_eq!(press(&mut empty_editor, KeyCode::Enter, KeyModifiers::NONE), "cancel");
-        assert_eq!(press(&mut empty_editor, KeyCode::Enter, KeyModifiers::CONTROL), "cancel");
+        assert_eq!(press(&mut empty_editor, KeyCode::Enter, KeyModifiers::ALT), "cancel");
     }
 
     #[test]
-    fn test_shift_enter_alt_enter_and_ctrl_j_insert_a_newline() {
+    fn test_shift_enter_ctrl_enter_and_ctrl_j_insert_a_newline() {
         let mut editor = editor_with("a");
 
         assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::SHIFT), "continue");
-        assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::ALT), "continue");
+        assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::CONTROL), "continue");
         assert_eq!(press(&mut editor, KeyCode::Char('j'), KeyModifiers::CONTROL), "continue");
 
         assert_eq!(editor.content(), "a\n\n\n");

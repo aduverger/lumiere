@@ -86,30 +86,6 @@ fn thread_json(repository: &ReviewRepository, thread: &Thread) -> Value {
     })
 }
 
-fn thread_text(thread: &Thread) -> String {
-    let mut heading = format!("## Thread {} · {}", thread.id, thread.filename);
-    if let Some(line_reference) = thread.line_reference() {
-        heading.push_str(&format!(" {}", line_reference));
-    }
-    let states = [
-        (thread.resolved, "resolved"),
-        (thread.outdated, "outdated: the code under it changed"),
-        (thread.awaiting_agent(), "awaiting your reply"),
-    ];
-    for (_, state) in states.iter().filter(|(applies, _)| *applies) {
-        heading.push_str(&format!(" · {}", state));
-    }
-
-    let mut text = heading;
-    if let Some(anchor_text) = &thread.anchor_text {
-        text.push_str(&format!("\n\n```\n{}\n```", anchor_text));
-    }
-    for comment in thread.sent_comments() {
-        text.push_str(&format!("\n\n{}: {}", comment.author_name, comment.body));
-    }
-    text
-}
-
 /// The threads of `repositories`, as text for a reader or as JSON.
 pub fn list(repositories: &[ReviewRepository], awaiting: bool, json: bool) -> Result<String, String> {
     let mut json_threads = Vec::new();
@@ -122,7 +98,7 @@ pub fn list(repositories: &[ReviewRepository], awaiting: bool, json: bool) -> Re
         json_threads.extend(threads.iter().map(|thread| thread_json(repository, thread)));
         let mut section = format!("# Repository: {} ({})", repository.name, repository.root.display());
         for thread in &threads {
-            section.push_str(&format!("\n\n{}", thread_text(thread)));
+            section.push_str(&format!("\n\n{}", thread.describe(thread.sent_comments())));
         }
         sections.push(section);
     }

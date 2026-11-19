@@ -207,6 +207,38 @@ impl Thread {
         })
     }
 
+    /// The thread as text for the agent: its id and place, the code it is anchored
+    /// to, then `comments`. Long code is cut; the agent can read the file.
+    pub fn describe<'a>(&self, comments: impl Iterator<Item = &'a Comment>) -> String {
+        const MAX_CODE_LINES: usize = 40;
+
+        let mut text = format!("## Thread {} · {}", self.id, self.filename);
+        if let Some(line_reference) = self.line_reference() {
+            text.push_str(&format!(" {}", line_reference));
+        }
+        let states = [
+            (self.resolved, "resolved"),
+            (self.outdated, "outdated: the code under it changed"),
+            (self.awaiting_agent(), "awaiting your reply"),
+        ];
+        for (_, state) in states.iter().filter(|(applies, _)| *applies) {
+            text.push_str(&format!(" · {}", state));
+        }
+
+        if let Some(anchor_text) = &self.anchor_text {
+            let code_lines: Vec<&str> = anchor_text.split('\n').collect();
+            let shown_lines = code_lines.len().min(MAX_CODE_LINES);
+            text.push_str(&format!("\n\n```\n{}\n```", code_lines[..shown_lines].join("\n")));
+            if shown_lines < code_lines.len() {
+                text.push_str(&format!("\n({} more lines)", code_lines.len() - shown_lines));
+            }
+        }
+        for comment in comments {
+            text.push_str(&format!("\n\n{}: {}", comment.author_name, comment.body));
+        }
+        text
+    }
+
     /// Whether this thread sits on lines that `target` also covers.
     pub fn overlaps(&self, filename: &str, target: &AnnotationTarget) -> bool {
         if self.filename != filename {

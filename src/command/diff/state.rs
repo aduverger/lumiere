@@ -954,6 +954,28 @@ impl AppState {
         self.threads.iter().map(Thread::queued_count).sum()
     }
 
+    /// The queued comments as text for the agent, each under its thread and the code
+    /// it is about: one comment of one thread, or all of them. Empty when there are none.
+    pub fn queued_text_for_agent(&self, only: Option<(&str, &str)>) -> String {
+        self.threads
+            .iter()
+            .filter_map(|thread| {
+                let comments: Vec<&Comment> = thread
+                    .comments
+                    .iter()
+                    .filter(|comment| comment.queued)
+                    .filter(|comment| {
+                        only.is_none_or(|(thread_id, comment_id)| {
+                            thread.id == thread_id && comment.id == comment_id
+                        })
+                    })
+                    .collect();
+                (!comments.is_empty()).then(|| thread.describe(comments.into_iter()))
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
     /// Marks queued comments as sent: one comment of one thread, or all of them.
     /// Returns how many were sent.
     pub fn mark_sent(&mut self, only: Option<(&str, &str)>) -> usize {
@@ -1144,6 +1166,11 @@ mod tests {
 
         assert_eq!(state.queued_count(), 2);
         assert!(!state.threads[0].awaiting_agent());
+        assert_eq!(
+            state.queued_text_for_agent(Some((&thread_id, &comment_id))),
+            format!("## Thread {} · a.rs line 1 (RIGHT)\n\n```\ncontent\n```\n\nyou: first", thread_id)
+        );
+        assert_eq!(state.queued_text_for_agent(None).matches("## Thread ").count(), 2);
 
         assert_eq!(state.mark_sent(Some((&thread_id, &comment_id))), 1);
         assert_eq!(state.queued_count(), 1);

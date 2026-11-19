@@ -346,6 +346,34 @@ fn target_at_cursor(state: &mut AppState) -> Option<(String, AnnotationTarget)> 
     ))
 }
 
+/// Puts a thread's file on screen with the thread's first line as the top row, so
+/// that threads above it, however long, cannot push it out of view. Returns whether
+/// the file is still in the diff.
+fn show_thread(state: &mut AppState, thread_id: &str) -> bool {
+    let Some(thread) = state.thread_by_id(thread_id) else {
+        return false;
+    };
+    let filename = thread.filename.clone();
+    let target = thread.target.clone();
+    let Some(file_index) = state.file_diffs.iter().position(|f| f.filename == filename) else {
+        return false;
+    };
+    state.select_file(file_index);
+
+    // File-level threads are drawn above the first row wherever the file is scrolled.
+    if let AnnotationTarget::LineRange { panel, start_line, .. } = target {
+        state.ensure_cache();
+        let first_row = find_sbs_index_for_line(state.side_by_side_ref(), panel, start_line);
+        if let Some(first_row) = first_row {
+            state.scroll = first_row as u16;
+            // `i` and `x` act on the focused hunk: make it the one the thread is in.
+            let hunk = state.hunks_ref().iter().rposition(|&hunk_start| hunk_start <= first_row);
+            state.focused_hunk = hunk.or(state.focused_hunk);
+        }
+    }
+    true
+}
+
 /// Stores what the editor holds as a queued comment. Returns the thread id and the
 /// comment id, or `None` when the thread it belonged to no longer exists.
 fn save_comment(state: &mut AppState, editor: &AnnotationEditor) -> Option<(String, String)> {
@@ -376,16 +404,20 @@ fn queued_total(state: &AppState, workspace_session: Option<&WorkspaceSession>) 
     }
 }
 
-/// Tells the agent that comments await it, then marks them as sent: the comment
-/// `only`, or every queued comment. When the agent cannot be reached they stay queued.
+/// Sends queued comments to the agent, then marks them as sent: the comment `only`,
+/// or every queued comment. When the agent cannot be reached they stay queued.
 fn send_queued(
     state: &mut AppState,
     workspace_session: Option<&mut WorkspaceSession>,
     agent: &mut AgentLink,
     only: Option<(&str, &str)>,
 ) -> Result<String, String> {
+    let comments = match &workspace_session {
+        Some(session) => session.queued_text_for_agent(state, only),
+        None => state.queued_text_for_agent(only),
+    };
     agent
-        .nudge()
+        .send_comments(&comments)
         .map_err(|error| format!("not sent, still queued: {}", error))?;
     let sent = match only {
         Some(_) => state.mark_sent(only),
@@ -961,56 +993,14 @@ fn run_app_internal<'a>(
                                     active_modal = None;
                                 }
                                 ModalResult::AnnotationJump { annotation_id } => {
-                                    if let Some(ann) = state.thread_by_id(&annotation_id) {
-                                        let filename = ann.filename.clone();
-                                        let target = ann.target.clone();
-                                        // Find and switch to the file
-                                        if let Some(file_index) = state
-                                            .file_diffs
-                                            .iter()
-                                            .position(|f| f.filename == filename)
-                                        {
-                                            state.select_file(file_index);
-                                            // Scroll to annotation's line range
-                                            if let AnnotationTarget::LineRange {
-                                                panel,
-                                                start_line,
-                                                ..
-                                            } = &target
-                                            {
-                                                state.ensure_cache();
-                                                let sbs = state.side_by_side_ref();
-                                                // Find the side_by_side index for start_line
-                                                if let Some(sbs_idx) = find_sbs_index_for_line(
-                                                    sbs,
-                                                    *panel,
-                                                    *start_line,
-                                                ) {
-                                                    state.scroll = adjust_scroll_to_line(
-                                                        sbs_idx,
-                                                        state.scroll,
-                                                        visible_height,
-                                                        max_scroll,
-                                                    );
-                                                }
-                                            }
-                                        }
-                                    }
+                                    show_thread(&mut state, &annotation_id);
                                     active_modal = None;
                                 }
                                 ModalResult::AnnotationEdit { annotation_id } => {
-                                    if let Some(thread) = state.thread_by_id(&annotation_id) {
-                                        let editor = AnnotationEditor::for_thread(thread);
-                                        // Jump to the file
-                                        let filename = thread.filename.clone();
-                                        if let Some(file_index) = state
-                                            .file_diffs
-                                            .iter()
-                                            .position(|f| f.filename == filename)
-                                        {
-                                            state.select_file(file_index);
-                                            annotation_editor = Some(editor);
-                                        }
+                                    if show_thread(&mut state, &annotation_id) {
+                                        annotation_editor = state
+                                            .thread_by_id(&annotation_id)
+                                            .map(AnnotationEditor::for_thread);
                                     }
                                     active_modal = None;
                                 }
@@ -2468,11 +2458,11 @@ fn run_app_internal<'a>(
                                                 description: "In a comment: save and send to the agent",
                                             },
                                             KeyBind {
-                                                key: "ctrl+enter / ctrl+s",
+                                                key: "alt+enter / ctrl+s",
                                                 description: "In a comment: save and queue",
                                             },
                                             KeyBind {
-                                                key: "shift+enter / ctrl+j",
+                                                key: "shift+enter / ctrl+enter / ctrl+j",
                                                 description: "In a comment: new line",
                                             },
                                             KeyBind {
@@ -2550,4 +2540,38 @@ fn generate_file_anchor(filename: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(filename.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::command::diff::types::FileDiff;
+
+    #[test]
+    fn test_showing_a_thread_puts_its_first_line_on_the_top_row() {
+        let numbered_lines: String = (1..=80).map(|line| format!("line {}\n", line)).collect();
+        let mut state = AppState::new(
+            vec![FileDiff {
+                filename: "a.rs".to_string(),
+                old_content: String::new(),
+                new_content: numbered_lines,
+                status: FileStatus::Added,
+                is_binary: false,
+            }],
+            None,
+        );
+        let on_line = |line: usize| AnnotationTarget::LineRange {
+            panel: DiffPanelFocus::New,
+            start_line: line,
+            end_line: line,
+        };
+        // A thread above the target whose comment takes more rows than a screen.
+        state.add_thread("a.rs".to_string(), on_line(6), "long\n".repeat(60));
+        let (thread_id, _) = state.add_thread("a.rs".to_string(), on_line(30), "here".to_string());
+
+        assert!(show_thread(&mut state, &thread_id));
+
+        let top_row = &state.side_by_side_ref()[state.scroll as usize];
+        assert_eq!(top_row.line_number(DiffPanelFocus::New), Some(30));
+    }
 }

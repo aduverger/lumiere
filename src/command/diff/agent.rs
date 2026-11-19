@@ -1,6 +1,7 @@
 //! The coding agent that answers review threads: a pi session in a Rex pane,
 //! found and nudged through the `rex` command line.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -30,8 +31,9 @@ pub trait Rex {
     fn terminal_blocks(&self, session: &str) -> Vec<String>;
     fn foreground_program(&self, session: &str, block: &str) -> Option<PaneProgram>;
     fn program_status(&self, session: &str, block: &str) -> Option<PaneStatus>;
-    /// Types `line` into the pane and submits it.
-    fn type_line(&self, session: &str, block: &str, line: &str) -> Result<(), String>;
+    /// Pastes `message` into the pane's prompt and submits it. `message` may span
+    /// several lines and must hold no control character other than line breaks.
+    fn submit_message(&self, session: &str, block: &str, message: &str) -> Result<(), String>;
 }
 
 pub struct RexCli;
@@ -54,10 +56,19 @@ impl RexCli {
         serde_json::from_slice(&output.stdout).ok()
     }
 
-    fn run(args: &[&str]) -> Result<(), String> {
-        let output = Self::command(args)
-            .output()
-            .map_err(|error| format!("cannot run rex: {}", error))?;
+    /// Runs `rex` with `input` on its standard input.
+    fn run(args: &[&str], input: &str) -> Result<(), String> {
+        let cannot_run = |error: std::io::Error| format!("cannot run rex: {}", error);
+        let mut child = Self::command(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(cannot_run)?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(input.as_bytes()).map_err(cannot_run)?;
+        }
+        let output = child.wait_with_output().map_err(cannot_run)?;
         if output.status.success() {
             Ok(())
         } else {
@@ -129,9 +140,12 @@ impl Rex for RexCli {
         })
     }
 
-    fn type_line(&self, session: &str, block: &str, line: &str) -> Result<(), String> {
-        Self::run(&["send", "-s", session, "-b", block, line])?;
-        Self::run(&["send-key", "-s", session, "-b", block, "enter"])
+    fn submit_message(&self, session: &str, block: &str, message: &str) -> Result<(), String> {
+        // A bracketed paste: the program receives the line breaks as text instead
+        // of as the key that submits.
+        let paste = format!("\x1b[200~{}\x1b[201~", message);
+        Self::run(&["send", "-s", session, "-b", block], &paste)?;
+        Self::run(&["send-key", "-s", session, "-b", block, "enter"], "")
     }
 }
 
@@ -202,25 +216,32 @@ fn lumiere_command() -> String {
     }
 }
 
-/// The message typed into the agent's prompt. It carries no comment text: the agent
-/// reads the threads itself.
-fn nudge_line(review_path: &Path) -> String {
+/// The message pasted into the agent's prompt: how to answer, then `comments`, the
+/// comments themselves under their threads, so that the agent has nothing to look up
+/// before replying. Control characters are dropped: one of them could end the paste
+/// early, and the rest of the text would then be read as keys.
+fn message_for_agent(review_path: &Path, comments: &str) -> String {
     let lumiere = lumiere_command();
     let path = review_path.display();
-    format!(
-        "Lumiere review: comments are waiting for your reply. \
-         Read them with `{lumiere} thread list --awaiting --repo '{path}'` and answer each one \
-         with `{lumiere} thread reply <id> --repo '{path}' --body '<reply>'`. \
+    let message = format!(
+        "Lumiere review comments. Answer each thread below with:\n\
+         {lumiere} thread reply <thread-id> --repo '{path}' --body '<reply>'\n\
          Reply in the thread first, in a few sentences, saying whether you agree and what \
-         you would change. Edit code only after I approve in that thread."
-    )
+         you would change. Edit code only after I approve in that thread. \
+         Earlier comments of a thread: {lumiere} thread list --repo '{path}'\n\n\
+         {comments}"
+    );
+    message
+        .chars()
+        .filter(|character| *character == '\n' || !character.is_control())
+        .collect()
 }
 
 /// The agent pane this review talks to, if any.
 pub struct AgentLink<'r> {
     rex: &'r dyn Rex,
     pane: Option<AgentPane>,
-    /// The repository or workspace folder under review, named in every nudge.
+    /// The repository or workspace folder under review, named in every message.
     review_path: PathBuf,
 }
 
@@ -292,10 +313,10 @@ impl<'r> AgentLink<'r> {
         }
     }
 
-    /// Tells the agent that threads await it. The pane is checked first, because the
-    /// same text typed into a shell would be run as a command; when it no longer runs
-    /// the agent, nothing is typed and the link is dropped.
-    pub fn nudge(&mut self) -> Result<(), String> {
+    /// Sends `comments` to the agent, with how to answer them. The pane is checked
+    /// first, because the same text pasted into a shell would be run as commands;
+    /// when it no longer runs the agent, nothing is sent and the link is dropped.
+    pub fn send_comments(&mut self, comments: &str) -> Result<(), String> {
         let Some(pane) = &self.pane else {
             return Err("no agent attached".to_string());
         };
@@ -303,8 +324,8 @@ impl<'r> AgentLink<'r> {
             self.pane = None;
             return Err(format!("the pane no longer runs {}", AGENT_PROGRAM));
         }
-        self.rex
-            .type_line(&pane.session, &pane.block, &nudge_line(&self.review_path))
+        let message = message_for_agent(&self.review_path, comments);
+        self.rex.submit_message(&pane.session, &pane.block, &message)
     }
 }
 
@@ -378,8 +399,8 @@ mod tests {
                 })
         }
 
-        fn type_line(&self, _session: &str, block: &str, line: &str) -> Result<(), String> {
-            self.typed.borrow_mut().push((block.to_string(), line.to_string()));
+        fn submit_message(&self, _session: &str, block: &str, message: &str) -> Result<(), String> {
+            self.typed.borrow_mut().push((block.to_string(), message.to_string()));
             Ok(())
         }
     }
@@ -442,22 +463,28 @@ mod tests {
     }
 
     #[test]
-    fn test_nudge_names_this_executable_and_the_review_path_and_is_typed_into_the_attached_pane() {
+    fn test_comments_reach_the_attached_pane_with_the_reply_command_of_this_executable() {
         let rex = FakeRex::with(vec![pane("s1", "agent", "pi", "/work", "")]);
         let mut link = attach(&rex, None);
+        let comments = "## Thread 1a2b · a.rs line 2 (RIGHT)\n\nyou: why?\x1b[201~";
 
-        assert_eq!(link.nudge(), Ok(()));
+        assert_eq!(link.send_comments(comments), Ok(()));
 
         let typed = rex.typed.borrow();
         assert_eq!(typed.len(), 1);
         assert_eq!(typed[0].0, "agent");
         let this_executable = std::env::current_exe().expect("test executable");
-        let list_command = format!(
-            "'{}' thread list --awaiting --repo '/work'",
+        let reply_command = format!(
+            "'{}' thread reply <thread-id> --repo '/work' --body",
             this_executable.display()
         );
-        assert!(typed[0].1.contains(&list_command), "{}", typed[0].1);
-        assert!(!typed[0].1.contains('\n'));
+        assert!(typed[0].1.contains(&reply_command), "{}", typed[0].1);
+        // The comments come last and whole, minus the character that would end the paste.
+        assert!(
+            typed[0].1.ends_with("## Thread 1a2b · a.rs line 2 (RIGHT)\n\nyou: why?[201~"),
+            "{}",
+            typed[0].1
+        );
     }
 
     #[test]
@@ -466,7 +493,7 @@ mod tests {
         let mut link = attach(&rex, None);
         rex.panes.borrow_mut()[0].argv0 = "zsh";
 
-        let error = link.nudge().expect_err("the agent quit");
+        let error = link.send_comments("you: why?").expect_err("the agent quit");
 
         assert_eq!(error, "the pane no longer runs pi");
         assert!(rex.typed.borrow().is_empty());

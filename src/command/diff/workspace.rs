@@ -150,6 +150,33 @@ impl<'a> WorkspaceSession<'a> {
             .sum()
     }
 
+    /// The queued comments as text for the agent, grouped by repository: one comment
+    /// of the repository on screen, or all of them across the repositories opened.
+    pub fn queued_text_for_agent(
+        &self,
+        active_state: &AppState,
+        only: Option<(&str, &str)>,
+    ) -> String {
+        self.workspace
+            .repositories
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| only.is_none() || *index == self.active)
+            .filter_map(|(index, repository)| {
+                let text = self.state_of(index, active_state)?.queued_text_for_agent(only);
+                (!text.is_empty()).then(|| {
+                    format!(
+                        "# Repository: {} ({})\n\n{}",
+                        repository.name,
+                        repository.path.display(),
+                        text
+                    )
+                })
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
     /// Marks the queued comments of the repositories that are off screen as sent.
     /// Returns how many there were.
     pub fn mark_parked_sent(&mut self) -> usize {
@@ -433,6 +460,9 @@ mod tests {
         assert!(state.threads.is_empty());
         assert!(web_backend.working_tree_root().ends_with("web"));
         assert_eq!(session.queued_count(&state), 1);
+        let text_for_agent = session.queued_text_for_agent(&state, None);
+        assert!(text_for_agent.starts_with("# Repository: api ("), "{}", text_for_agent);
+        assert!(text_for_agent.ends_with("you: check this"), "{}", text_for_agent);
 
         session.switch_to(0, &options, &mut state).expect("switch back to api");
 
