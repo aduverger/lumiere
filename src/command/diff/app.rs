@@ -315,7 +315,7 @@ fn target_at_cursor(state: &mut AppState) -> Option<(String, AnnotationTarget)> 
     let hunk_start = state.hunks_ref().get(hunk_index).copied().unwrap_or(0);
     let (panel, start_line, end_line) =
         hunk_comment_lines(state.side_by_side_ref(), hunk_start, state.diff_fullscreen)
-        .unwrap_or((DiffPanelFocus::New, 1, 1));
+            .unwrap_or((DiffPanelFocus::New, 1, 1));
     Some((
         filename,
         AnnotationTarget::LineRange {
