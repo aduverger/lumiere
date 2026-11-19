@@ -93,7 +93,7 @@ mouse, or focus a hunk with `[` and `]`; with neither, the comment is on the fil
 | `Shift+Enter`, `Ctrl+J` | New line |
 | `s` | Send every queued comment as one message |
 | `x` | Resolve or reopen the thread. Replying to a resolved thread reopens it. |
-| `I` | List the threads |
+| `I` | List the threads. There, `x` resolves or reopens the selected one. |
 | `A` | Choose the agent, or none |
 
 - **Agent.** Lumiere looks for [Rex](https://rex.dev) panes running `pi` whose working

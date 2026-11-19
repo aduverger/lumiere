@@ -264,11 +264,15 @@ fn format_annotation_preview(thread: &Thread) -> String {
     )
 }
 
-fn threads_modal(threads: &[Thread]) -> Modal {
+/// The threads list, oldest first, opened on `selected_thread` when it is given.
+fn threads_modal(threads: &[Thread], selected_thread: Option<&str>) -> Modal {
     let mut sorted_threads = threads.to_vec();
     sorted_threads.sort_by_key(|thread| thread.created_at);
     let items = sorted_threads.iter().map(format_annotation_preview).collect();
-    Modal::annotations("Threads", items, sorted_threads)
+    let selected = selected_thread
+        .and_then(|id| sorted_threads.iter().position(|thread| thread.id == id))
+        .unwrap_or(0);
+    Modal::annotations("Threads", items, sorted_threads, selected)
 }
 
 fn count_of(count: usize, noun: &str) -> String {
@@ -1023,8 +1027,13 @@ fn run_app_internal<'a>(
                                     active_modal = if state.threads.is_empty() {
                                         None
                                     } else {
-                                        Some(threads_modal(&state.threads))
+                                        Some(threads_modal(&state.threads, None))
                                     };
+                                }
+                                ModalResult::AnnotationToggleResolved { annotation_id } => {
+                                    state.toggle_thread_resolved(&annotation_id);
+                                    active_modal =
+                                        Some(threads_modal(&state.threads, Some(&annotation_id)));
                                 }
                                 ModalResult::AnnotationCopyAll => {
                                     // Copy all annotations to clipboard
@@ -2116,7 +2125,7 @@ fn run_app_internal<'a>(
                         }
                         KeyCode::Char('I') => {
                             if !state.threads.is_empty() {
-                                active_modal = Some(threads_modal(&state.threads));
+                                active_modal = Some(threads_modal(&state.threads, None));
                             }
                         }
                         KeyCode::Char('r') => {
@@ -2518,7 +2527,7 @@ fn run_app_internal<'a>(
                                             },
                                             KeyBind {
                                                 key: "I",
-                                                description: "View all threads",
+                                                description: "View all threads (x resolves one there)",
                                             },
                                             KeyBind {
                                                 key: "s",
@@ -2648,6 +2657,31 @@ mod tests {
             hunk_target("keep\ngone 1\ngone 2\nend\n", "keep\nend\n"),
             lines(DiffPanelFocus::Old, 2, 3)
         );
+    }
+
+    #[test]
+    fn test_x_in_the_threads_list_resolves_the_selected_thread_and_keeps_it_selected() {
+        let mut state = state_with_file("a\n", "b\n");
+        state.add_thread("a.rs".to_string(), AnnotationTarget::File, "first".to_string());
+        let (second_id, _) =
+            state.add_thread("a.rs".to_string(), AnnotationTarget::File, "second".to_string());
+        let mut list = threads_modal(&state.threads, Some(&second_id));
+        let x = crossterm::event::KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+
+        let Some(ModalResult::AnnotationToggleResolved { annotation_id }) = list.handle_input(x, 40)
+        else {
+            panic!("x asks to resolve the selected thread");
+        };
+
+        assert_eq!(annotation_id, second_id);
+        state.toggle_thread_resolved(&annotation_id);
+        let resolved: Vec<bool> = state.threads.iter().map(|thread| thread.resolved).collect();
+        assert_eq!(resolved, [false, true]);
+        let reopened_list = threads_modal(&state.threads, Some(&annotation_id));
+        assert!(matches!(
+            reopened_list.content,
+            ModalContent::Annotations { selected: 1, .. }
+        ));
     }
 
     #[test]
