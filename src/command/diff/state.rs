@@ -870,17 +870,20 @@ impl AppState {
         self.threads.iter().find(|thread| thread.id == id)
     }
 
-    /// The first thread on the lines `target` covers. Resolved threads are skipped
-    /// unless `include_resolved` is set.
+    /// The first open thread on the lines `target` covers. When none is open and
+    /// `or_resolved` is set, the first resolved one.
     pub fn thread_at(
         &self,
         filename: &str,
         target: &AnnotationTarget,
-        include_resolved: bool,
+        or_resolved: bool,
     ) -> Option<&Thread> {
-        self.threads.iter().find(|thread| {
-            thread.overlaps(filename, target) && (include_resolved || !thread.resolved)
-        })
+        let first_thread = |resolved: bool| {
+            self.threads
+                .iter()
+                .find(|thread| thread.overlaps(filename, target) && thread.resolved == resolved)
+        };
+        first_thread(false).or_else(|| first_thread(true).filter(|_| or_resolved))
     }
 
     /// Starts a thread with a queued comment. Returns the thread id and the comment id.
@@ -1162,6 +1165,26 @@ mod tests {
         state.add_reply(&thread_id, "one more thing".to_string());
 
         assert!(!state.threads[0].resolved);
+    }
+
+    #[test]
+    fn test_an_open_thread_is_found_before_an_older_resolved_one_on_the_same_lines() {
+        let mut state = AppState::new(vec![make_file_diff("a.rs")], None);
+        let (older_id, _) =
+            state.add_thread("a.rs".to_string(), line_target(1), "first".to_string());
+        state.toggle_thread_resolved(&older_id);
+        let (newer_id, _) =
+            state.add_thread("a.rs".to_string(), line_target(1), "second".to_string());
+        let thread_to_toggle = |state: &AppState| {
+            state
+                .thread_at("a.rs", &line_target(1), true)
+                .map(|thread| thread.id.clone())
+        };
+
+        assert_eq!(thread_to_toggle(&state), Some(newer_id.clone()));
+
+        state.toggle_thread_resolved(&newer_id);
+        assert_eq!(thread_to_toggle(&state), Some(older_id));
     }
 
     #[test]
