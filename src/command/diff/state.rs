@@ -989,8 +989,9 @@ impl AppState {
         self.threads.iter().map(Thread::queued_count).sum()
     }
 
-    /// The queued comments as text for the agent, each under its thread and the code
-    /// it is about: one comment of one thread, or all of them. Empty when there are none.
+    /// The queued comments as text for the agent, each under its thread: one comment of
+    /// one thread, or all of them. The code a thread is about comes with its first
+    /// comment only. Empty when there are none.
     pub fn queued_text_for_agent(&self, only: Option<(&str, &str)>) -> String {
         self.threads
             .iter()

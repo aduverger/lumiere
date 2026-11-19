@@ -242,8 +242,9 @@ fn command_for(executable: &Path, path_variable: Option<&std::ffi::OsStr>) -> St
 }
 
 /// The message pasted into the agent's prompt: how to answer, then `comments`, the
-/// comments themselves under their threads, so that the agent has nothing to look up
-/// before replying. How to read earlier comments is said only when a thread has some.
+/// comments themselves under their threads. A thread's first comment comes with its
+/// code, so that the agent has nothing to look up before replying. A later comment
+/// comes without it, and the message then says how to read the thread.
 /// Control characters are dropped: one of them could end the paste early, and the
 /// rest of the text would then be read as keys.
 fn message_for_agent(review_path: &Path, comments: &str) -> String {
