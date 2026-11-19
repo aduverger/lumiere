@@ -7,7 +7,7 @@ use ratatui::{
 use crate::command::diff::global_search::{GlobalSearchState, LineChange};
 use crate::command::diff::render::diff_view::expand_tabs_in_spans;
 use crate::command::diff::search::MatchPanel;
-use crate::command::diff::state::Annotation;
+use crate::command::diff::review_thread::Thread;
 use crate::command::diff::theme;
 
 #[derive(Clone)]
@@ -61,7 +61,7 @@ pub enum ModalContent {
     Annotations {
         title: String,
         items: Vec<String>,
-        annotations: Vec<Annotation>,
+        annotations: Vec<Thread>,
         selected: usize,
         export_input: Option<String>,
         /// Error message to display (e.g., for failed export)
@@ -92,9 +92,9 @@ pub enum ModalResult {
         sbs_line_index: usize,
         panel: MatchPanel,
     },
-    AnnotationJump { annotation_id: u64 },
-    AnnotationEdit { annotation_id: u64 },
-    AnnotationDelete { annotation_id: u64 },
+    AnnotationJump { annotation_id: String },
+    AnnotationEdit { annotation_id: String },
+    AnnotationDelete { annotation_id: String },
     AnnotationCopyAll,
     AnnotationExport(String),
 }
@@ -169,7 +169,7 @@ impl Modal {
     pub fn annotations(
         title: impl Into<String>,
         items: Vec<String>,
-        annotations: Vec<Annotation>,
+        annotations: Vec<Thread>,
     ) -> Self {
         Self {
             content: ModalContent::Annotations {
@@ -878,7 +878,7 @@ impl Modal {
                 Span::styled(" jump  ", Style::default().fg(t.ui.text_muted)),
                 Span::styled("│  ", Style::default().fg(t.ui.border_unfocused)),
                 Span::styled("e", Style::default().fg(t.ui.text_muted)),
-                Span::styled(" edit  ", Style::default().fg(t.ui.text_muted)),
+                Span::styled(" edit/reply  ", Style::default().fg(t.ui.text_muted)),
                 Span::styled("│  ", Style::default().fg(t.ui.border_unfocused)),
                 Span::styled("d", Style::default().fg(t.ui.text_muted)),
                 Span::styled(" del  ", Style::default().fg(t.ui.text_muted)),
@@ -1262,17 +1262,17 @@ impl Modal {
                         }
                         KeyCode::Enter => annotations.get(*selected).map(|ann| {
                             ModalResult::AnnotationJump {
-                                annotation_id: ann.id,
+                                annotation_id: ann.id.clone(),
                             }
                         }),
                         KeyCode::Char('e') => annotations.get(*selected).map(|ann| {
                             ModalResult::AnnotationEdit {
-                                annotation_id: ann.id,
+                                annotation_id: ann.id.clone(),
                             }
                         }),
                         KeyCode::Char('d') => annotations.get(*selected).map(|ann| {
                             ModalResult::AnnotationDelete {
-                                annotation_id: ann.id,
+                                annotation_id: ann.id.clone(),
                             }
                         }),
                         KeyCode::Char('y') => Some(ModalResult::AnnotationCopyAll),
