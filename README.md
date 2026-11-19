@@ -102,7 +102,8 @@ mouse, or focus a hunk with `{` and `}`; with neither, the comment is on the fil
   instead. The footer shows the agent and its state, or `no agent`.
 - **Sending.** Lumiere pastes one message into the agent's prompt and submits it. The
   message holds each comment with its thread id, file, lines and code, and the command
-  to reply with. The agent is asked to reply in the thread first and to edit code only
+  to reply with. A follow-up in a thread leaves the code out and says how to read the
+  earlier comments. The agent is asked to reply in the thread first and to edit code only
   after you approve there.
 - **Without an agent** `Enter` queues, and `s` exits and writes the queued comments to
   standard output.

@@ -1210,12 +1210,12 @@ mod tests {
         assert_eq!(state.mark_sent(Some((&thread_id, &comment_id))), 1);
         assert_eq!(state.queued_count(), 1);
 
-        // A follow-up names the comment the agent already has, without repeating it.
+        // A follow-up says the agent already has a comment, and repeats neither it nor the code.
         let follow_up_id = state.add_reply(&thread_id, "and this?".to_string()).expect("reply");
         assert_eq!(
             state.queued_text_for_agent(Some((&thread_id, &follow_up_id))),
             format!(
-                "## Thread {} · a.rs line 1 (RIGHT) · awaiting your reply · earlier comments: 1\n\n```\ncontent\n```\n\nyou: and this?",
+                "## Thread {} · a.rs line 1 (RIGHT) · awaiting your reply · earlier comments: 1\n\nyou: and this?",
                 thread_id
             )
         );
