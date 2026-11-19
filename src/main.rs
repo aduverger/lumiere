@@ -23,8 +23,8 @@ fn run() -> Result<(), LumiereError> {
     let cli = Cli::parse();
     let config = LumiereConfig::build(&cli)?;
 
-    // Get VCS backend based on CLI override or auto-detection
     let cwd = std::env::current_dir()?;
+    // None: the version control system is detected.
     let vcs_override = cli.vcs.map(VcsBackendType::from);
 
     match cli.command {

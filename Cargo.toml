@@ -14,7 +14,7 @@ name = "lumiere"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.4", features = ["derive", "env"] }
+clap = { version = "4.4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 spinoff = { version = "0.8.0", features = ["dots"] }
