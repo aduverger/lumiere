@@ -39,7 +39,7 @@ fn open_tui_writer() -> io::Result<Box<dyn Write + Send>> {
 use super::agent::{AgentLink, AgentPane, RexCli};
 use super::annotation::{AnnotationEditor, AnnotationEditorResult};
 use super::coordinates::{extract_selected_text, PanelLayout};
-use super::diff_algo::hunk_comment_lines;
+use super::diff_algo::{hunk_comment_lines, hunk_lines_on};
 use super::git::{
     get_current_branch, load_file_diffs, load_pr_file_diffs, load_single_commit_diffs,
 };
@@ -280,12 +280,16 @@ fn count_of(count: usize, noun: &str) -> String {
     format!("{} {}{}", count, noun, if count == 1 { "" } else { "s" })
 }
 
+fn lines_are_selected(state: &AppState) -> bool {
+    state.selection.is_active() && !matches!(state.selection.mode, SelectionMode::None)
+}
+
 /// What `i` and `x` act on in the current file: the selected lines, otherwise the
 /// focused hunk, otherwise the whole file.
 fn target_at_cursor(state: &mut AppState) -> Option<(String, AnnotationTarget)> {
     let filename = state.file_diffs.get(state.current_file)?.filename.clone();
 
-    if state.selection.is_active() && !matches!(state.selection.mode, SelectionMode::None) {
+    if lines_are_selected(state) {
         // Line-mode and character-mode selections both cover full lines.
         let panel = state.selection.panel;
         let sel_start = state.selection.anchor.line.min(state.selection.head.line);
@@ -324,6 +328,38 @@ fn target_at_cursor(state: &mut AppState) -> Option<(String, AnnotationTarget)> 
             end_line,
         },
     ))
+}
+
+/// The thread that `i` replies to and `x` resolves: the one on `target`, the lines
+/// from `target_at_cursor`. For a focused hunk, a thread on the hunk's other side
+/// counts as well: it was started while a different panel was shown.
+fn thread_at_cursor<'a>(
+    state: &'a AppState,
+    filename: &str,
+    target: &AnnotationTarget,
+    or_resolved: bool,
+) -> Option<&'a Thread> {
+    if let Some(thread) = state.thread_at(filename, target, or_resolved) {
+        return Some(thread);
+    }
+    let AnnotationTarget::LineRange { panel, .. } = target else {
+        return None;
+    };
+    if lines_are_selected(state) {
+        return None;
+    }
+    let hunk_start = *state.hunks_ref().get(state.focused_hunk?)?;
+    let other_side = match panel {
+        DiffPanelFocus::Old => DiffPanelFocus::New,
+        _ => DiffPanelFocus::Old,
+    };
+    let (start_line, end_line) = hunk_lines_on(state.side_by_side_ref(), hunk_start, other_side)?;
+    let other_side_of_hunk = AnnotationTarget::LineRange {
+        panel: other_side,
+        start_line,
+        end_line,
+    };
+    state.thread_at(filename, &other_side_of_hunk, or_resolved)
 }
 
 /// Puts a thread's file on screen with the thread's first line as the top row, so
@@ -2083,11 +2119,10 @@ fn run_app_internal<'a>(
                             }
                         }
                         KeyCode::Char('i') => {
-                            let had_selection = state.selection.is_active()
-                                && !matches!(state.selection.mode, SelectionMode::None);
+                            let had_selection = lines_are_selected(&state);
                             if let Some((filename, target)) = target_at_cursor(&mut state) {
                                 annotation_editor =
-                                    Some(match state.thread_at(&filename, &target, false) {
+                                    Some(match thread_at_cursor(&state, &filename, &target, false) {
                                         Some(thread) => AnnotationEditor::for_thread(thread),
                                         None => AnnotationEditor::new(filename, target),
                                     });
@@ -2098,7 +2133,7 @@ fn run_app_internal<'a>(
                         }
                         KeyCode::Char('x') => {
                             let thread_id = target_at_cursor(&mut state).and_then(|(filename, target)| {
-                                let thread = state.thread_at(&filename, &target, true)?;
+                                let thread = thread_at_cursor(&state, &filename, &target, true)?;
                                 Some(thread.id.clone())
                             });
                             match thread_id {
@@ -2660,6 +2695,25 @@ mod tests {
             old_panel_target("keep\nend\n", "keep\nnew 1\nnew 2\nend\n"),
             lines(DiffPanelFocus::New, 2, 3)
         );
+    }
+
+    #[test]
+    fn test_a_hunk_thread_started_from_the_old_panel_is_found_with_both_panels_shown() {
+        // Three lines replaced by two: the hunk has lines on both sides.
+        let mut state = state_with_file("keep\na\nb\nc\nend\n", "keep\nA\nB\nend\n");
+        state.diff_fullscreen = DiffFullscreen::OldOnly;
+        let (filename, old_lines) = target_at_cursor(&mut state).expect("target");
+        let (thread_id, _) = state.add_thread(filename, old_lines, "why?".to_string());
+
+        state.diff_fullscreen = DiffFullscreen::None;
+        let (filename, target) = target_at_cursor(&mut state).expect("target");
+
+        assert!(matches!(
+            target,
+            AnnotationTarget::LineRange { panel: DiffPanelFocus::New, .. }
+        ));
+        let found = thread_at_cursor(&state, &filename, &target, false).map(|thread| &thread.id);
+        assert_eq!(found, Some(&thread_id));
     }
 
     #[test]

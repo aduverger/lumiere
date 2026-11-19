@@ -251,6 +251,21 @@ fn push_hidden_run(result: &mut Vec<DiffLine>, hidden_run: &mut Vec<DiffLine>) {
     }
 }
 
+/// The first and last line that the hunk starting at row `hunk_start` has on one side.
+pub fn hunk_lines_on(
+    rows: &[DiffLine],
+    hunk_start: usize,
+    panel: DiffPanelFocus,
+) -> Option<(usize, usize)> {
+    let mut lines = rows
+        .iter()
+        .skip(hunk_start)
+        .take_while(|row| !matches!(row.change_type, ChangeType::Equal))
+        .filter_map(|row| row.line_number(panel));
+    let start_line = lines.next()?;
+    Some((start_line, lines.last().unwrap_or(start_line)))
+}
+
 /// The side and lines a comment on the hunk starting at row `hunk_start` is attached
 /// to. It is the side being read: the old one when only the old panel is shown, the
 /// new one otherwise. A hunk with no lines on that side, such as one that only
@@ -260,20 +275,14 @@ pub fn hunk_comment_lines(
     hunk_start: usize,
     fullscreen: DiffFullscreen,
 ) -> Option<(DiffPanelFocus, usize, usize)> {
-    let lines_on = |panel: DiffPanelFocus| {
-        let mut lines = rows
-            .iter()
-            .skip(hunk_start)
-            .take_while(|row| !matches!(row.change_type, ChangeType::Equal))
-            .filter_map(move |row| row.line_number(panel));
-        let start_line = lines.next()?;
-        Some((panel, start_line, lines.last().unwrap_or(start_line)))
-    };
     let (shown_side, other_side) = match fullscreen {
         DiffFullscreen::OldOnly => (DiffPanelFocus::Old, DiffPanelFocus::New),
         _ => (DiffPanelFocus::New, DiffPanelFocus::Old),
     };
-    lines_on(shown_side).or_else(|| lines_on(other_side))
+    [shown_side, other_side].into_iter().find_map(|panel| {
+        let (start_line, end_line) = hunk_lines_on(rows, hunk_start, panel)?;
+        Some((panel, start_line, end_line))
+    })
 }
 
 pub fn find_hunk_starts(lines: &[DiffLine]) -> Vec<usize> {
