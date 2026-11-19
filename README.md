@@ -83,7 +83,7 @@ back, keeping the focused hunk in place.
 ## Review threads
 
 A comment starts a thread on a selection, a hunk or a file. Select lines with the
-mouse, or focus a hunk with `{` and `}`; with neither, the comment is on the file.
+mouse, or focus a hunk with `[` and `]`; with neither, the comment is on the file.
 
 | Key | Effect |
 |---|---|
@@ -176,12 +176,12 @@ come from the same version.
 |---|---|
 | `j` / `k`, arrows | Scroll, or move in a list |
 | `Option+Up` / `Option+Down`, `Option+J` / `Option+K` | Previous / next file |
-| `{` / `}` | Previous / next hunk |
+| `[` / `]` | Previous / next hunk |
 | `Ctrl+P` | File picker |
 | `/`, `Ctrl+F` | Search in the file, or in every file |
 | `Tab` | Show or hide the sidebar |
 | `Space` | Mark the file as viewed and go to the next |
-| `[` / `]` / `=` | Old side only, new side only, both |
+| `0` / `-` / `=` | Old side only, new side only, both |
 | `w` | Watch mode on or off |
 | `z` | Hunks only, or the full file |
 | `e` | Open the file in `EDITOR` |
