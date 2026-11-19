@@ -1933,11 +1933,10 @@ pub fn render_diff(
             .and_then(|&hunk_start| hunk_comment_lines(side_by_side, hunk_start, diff_fullscreen))
             .map(|(panel, _, _)| panel);
 
-        // Track rendered rows for new-panel border annotation markers (paragraph-relative)
+        // Rows of the old panel's paragraph where the border it shares with the new panel
+        // carries a new-side thread marker, or the focus bar. Used when both are shown.
         let mut border_marker_rows: Vec<usize> = Vec::new();
-        // Rows where the focus bar is drawn on the border the two panels share.
         let mut border_focus_rows: Vec<usize> = Vec::new();
-        let mut rendered_row = content_row_offset;
 
         let focus_style = Style::default().fg(t.ui.border_focused);
         let annotation_indicator_style = Style::default().fg(t.ui.highlight);
@@ -1959,7 +1958,6 @@ pub fn render_diff(
         for (i, diff_line) in visible_lines.iter().enumerate() {
             let line_idx = scroll_usize + i;
             if diff_line.hidden_lines > 0 {
-                rendered_row += 1;
                 let label = hidden_lines_label(diff_line.hidden_lines);
                 if old_area.is_some() {
                     old_lines.push(separator_line(&label, old_row_target_width, t));
@@ -2007,13 +2005,6 @@ pub fn render_diff(
                     _ => old_area.is_none(),
                 };
 
-            if new_in_annotation {
-                border_marker_rows.push(rendered_row);
-            }
-            if focus_on_new {
-                border_focus_rows.push(rendered_row);
-            }
-            rendered_row += 1;
 
             let old_line_selected =
                 old_selection_range.map_or(false, |(s, e)| s == 0 && e == usize::MAX);
@@ -2255,6 +2246,14 @@ pub fn render_diff(
                     ));
                 }
             }
+            // A wrapped row takes several screen lines: all of them are marked.
+            let screen_lines = old_start_len..old_start_len + row_count;
+            if new_in_annotation {
+                border_marker_rows.extend(screen_lines.clone());
+            }
+            if focus_on_new {
+                border_focus_rows.extend(screen_lines);
+            }
 
             // Check if this line is the end_line for any line-range slot
             for slot in &line_slots {
@@ -2280,7 +2279,6 @@ pub fn render_diff(
                             if new_area.is_some() {
                                 new_lines.push(Line::from(vec![Span::raw("")]));
                             }
-                            rendered_row += 1;
                         }
 
                         slot_overlays.push((line_pos, slot));
