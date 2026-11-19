@@ -1050,13 +1050,13 @@ impl Modal {
             ModalContent::Select {
                 items, selected, ..
             } => match key.code {
-                KeyCode::Down | KeyCode::Char('j') => {
+                KeyCode::Down | KeyCode::Char('k') => {
                     if *selected < items.len().saturating_sub(1) {
                         *selected += 1;
                     }
                     None
                 }
-                KeyCode::Up | KeyCode::Char('k') => {
+                KeyCode::Up | KeyCode::Char('j') => {
                     *selected = selected.saturating_sub(1);
                     None
                 }
@@ -1073,11 +1073,11 @@ impl Modal {
 
                 match key.code {
                     KeyCode::Enter => Some(ModalResult::Dismissed),
-                    KeyCode::Down | KeyCode::Char('j') => {
+                    KeyCode::Down | KeyCode::Char('k') => {
                         *scroll = (*scroll + 1).min(max_scroll);
                         None
                     }
-                    KeyCode::Up | KeyCode::Char('k') => {
+                    KeyCode::Up | KeyCode::Char('j') => {
                         *scroll = scroll.saturating_sub(1);
                         None
                     }
@@ -1115,7 +1115,7 @@ impl Modal {
                 KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(ModalResult::Dismissed)
                 }
-                KeyCode::Down | KeyCode::Char('j')
+                KeyCode::Down | KeyCode::Char('k')
                     if key.modifiers.contains(KeyModifiers::CONTROL)
                         || key.code == KeyCode::Down =>
                 {
@@ -1124,7 +1124,7 @@ impl Modal {
                     }
                     None
                 }
-                KeyCode::Up | KeyCode::Char('k')
+                KeyCode::Up | KeyCode::Char('j')
                     if key.modifiers.contains(KeyModifiers::CONTROL) || key.code == KeyCode::Up =>
                 {
                     *selected = selected.saturating_sub(1);
@@ -1250,13 +1250,13 @@ impl Modal {
                         {
                             Some(ModalResult::Dismissed)
                         }
-                        KeyCode::Down | KeyCode::Char('j') => {
+                        KeyCode::Down | KeyCode::Char('k') => {
                             if *selected < items.len().saturating_sub(1) {
                                 *selected += 1;
                             }
                             None
                         }
-                        KeyCode::Up | KeyCode::Char('k') => {
+                        KeyCode::Up | KeyCode::Char('j') => {
                             *selected = selected.saturating_sub(1);
                             None
                         }
@@ -1298,10 +1298,10 @@ impl Modal {
 
                 // "Next/prev result" — ↓ / Ctrl+n / Ctrl+j (all telescope-standard).
                 let is_down = matches!(key.code, KeyCode::Down)
-                    || (ctrl && matches!(key.code, KeyCode::Char('n') | KeyCode::Char('j')));
+                    || (ctrl && matches!(key.code, KeyCode::Char('n') | KeyCode::Char('k')));
                 // "Prev result" — ↑ / Ctrl+p / Ctrl+k.
                 let is_up = matches!(key.code, KeyCode::Up)
-                    || (ctrl && matches!(key.code, KeyCode::Char('p') | KeyCode::Char('k')));
+                    || (ctrl && matches!(key.code, KeyCode::Char('p') | KeyCode::Char('j')));
                 // Half-page down — PageDown / Ctrl+d. (Ctrl+u is taken by clear-query.)
                 let is_page_down =
                     matches!(key.code, KeyCode::PageDown) || (ctrl && matches!(key.code, KeyCode::Char('d')));

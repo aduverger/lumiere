@@ -1585,10 +1585,10 @@ fn run_app_internal<'a>(
                                 state.focused_panel = FocusedPanel::DiffView;
                             }
                         }
-                        // Next file: option+down, option+j, and upstream's ctrl+j.
-                        KeyCode::Down | KeyCode::Char('j')
+                        // Next file: option+down, option+k, ctrl+k.
+                        KeyCode::Down | KeyCode::Char('k')
                             if key.modifiers.contains(KeyModifiers::ALT)
-                                || (key.code == KeyCode::Char('j')
+                                || (key.code == KeyCode::Char('k')
                                     && key.modifiers.contains(KeyModifiers::CONTROL)) =>
                         {
                             if !state.file_diffs.is_empty() {
@@ -1608,10 +1608,10 @@ fn run_app_internal<'a>(
                                 }
                             }
                         }
-                        // Previous file: option+up, option+k, and upstream's ctrl+k.
-                        KeyCode::Up | KeyCode::Char('k')
+                        // Previous file: option+up, option+j, ctrl+j.
+                        KeyCode::Up | KeyCode::Char('j')
                             if key.modifiers.contains(KeyModifiers::ALT)
-                                || (key.code == KeyCode::Char('k')
+                                || (key.code == KeyCode::Char('j')
                                     && key.modifiers.contains(KeyModifiers::CONTROL)) =>
                         {
                             if !state.file_diffs.is_empty() && state.sidebar_selected > 0 {
@@ -1735,7 +1735,7 @@ fn run_app_internal<'a>(
                                 );
                             }
                         }
-                        KeyCode::Down | KeyCode::Char('j') => {
+                        KeyCode::Down | KeyCode::Char('k') => {
                             if state.focused_panel == FocusedPanel::Sidebar {
                                 if state.sidebar_selected + 1 < state.sidebar_visible_len() {
                                     state.sidebar_selected += 1;
@@ -1747,7 +1747,7 @@ fn run_app_internal<'a>(
                                 state.scroll = (state.scroll + 1).min(max_scroll as u16);
                             }
                         }
-                        KeyCode::Up | KeyCode::Char('k') => {
+                        KeyCode::Up | KeyCode::Char('j') => {
                             if state.focused_panel == FocusedPanel::Sidebar {
                                 if state.sidebar_selected > 0 {
                                     state.sidebar_selected =
@@ -2319,7 +2319,7 @@ fn run_app_internal<'a>(
                                                 description: "Focus sidebar / diff",
                                             },
                                             KeyBind {
-                                                key: "option+down/j, option+up/k",
+                                                key: "option+down/k, option+up/j",
                                                 description: "Next / previous file",
                                             },
                                             KeyBind {

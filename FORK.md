@@ -17,8 +17,10 @@ a review loop with a coding agent.
   shows everything a branch would add, even after `origin/main` has moved on.
 - `lumiere diff` works from any directory of a repository; files, watch mode and the
   editor are resolved from the repository root.
-- `Option+Down` or `Option+J` opens the next file, `Option+Up` or `Option+K` the
-  previous one (`Alt` elsewhere). Upstream's `Ctrl+J` and `Ctrl+K` still work.
+- `j` means up or previous and `k` means down or next, in the diff, the sidebar and
+  every list. This is the reverse of upstream.
+- `Option+Down` or `Option+K` opens the next file, `Option+Up` or `Option+J` the
+  previous one (`Alt` elsewhere). `Ctrl+K` and `Ctrl+J` do the same.
 - Workspace reviews, review threads answered by a coding agent, and the `/lumiere` pi
   command, described below.
 - When stdout is captured, the theme is no longer detected by querying the terminal,
