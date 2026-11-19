@@ -114,15 +114,16 @@ mouse, or focus a hunk with `{` and `}`; with neither, the comment is on the fil
   found unchanged at exactly one place on the same side of the file. Otherwise it is
   marked `outdated`.
 
-The agent uses two commands, from the repository or the workspace folder:
+The agent uses three commands, from the repository or the workspace folder:
 
 ```bash
 lumiere thread list [--awaiting] [--json] [--repo PATH]
+lumiere thread show <thread-id> [--json] [--repo PATH]
 lumiere thread reply <thread-id> (--body TEXT | --stdin) [--repo PATH] [--author NAME]
 ```
 
 `--awaiting` keeps the open threads whose last sent comment is yours. Queued comments
-are hidden from both commands, and a resolved thread cannot be replied to.
+are hidden from all three commands, and a resolved thread cannot be replied to.
 
 ## Workspace reviews
 

@@ -253,7 +253,7 @@ fn message_for_agent(review_path: &Path, comments: &str) -> String {
         .lines()
         .any(|line| line.starts_with("## Thread ") && line.contains(EARLIER_COMMENTS_LABEL));
     let earlier_comments = if continues_a_thread {
-        format!(" Earlier comments of a thread: {lumiere} thread list --repo '{path}'")
+        format!(" Earlier comments of a thread: {lumiere} thread show <thread-id> --repo '{path}'")
     } else {
         String::new()
     };
@@ -531,8 +531,8 @@ mod tests {
         let without = message_for_agent(Path::new("/work"), first_comment);
         let with = message_for_agent(Path::new("/work"), follow_up);
 
-        assert!(!without.contains("thread list"), "{}", without);
-        assert!(with.contains("thread list --repo '/work'"), "{}", with);
+        assert!(!without.contains("thread show"), "{}", without);
+        assert!(with.contains("thread show <thread-id> --repo '/work'"), "{}", with);
     }
 
     #[test]
