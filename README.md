@@ -203,8 +203,8 @@ terminal's background.
 ## Relation to Lumen
 
 Lumiere started as a fork of [Lumen](https://github.com/jnsahaj/lumen) v2.32.0 and
-keeps its diff viewer. It is developed on its own and does not follow Lumen's
-releases. The main differences:
+keeps its diff viewer. It is developed on its own, does not follow Lumen's
+releases, and restarts its version at 0.1.0. The main differences:
 
 - Review threads with an agent replace Lumen's one-way annotations.
 - Workspace reviews, the `A...-` reference and the pi command are new.
