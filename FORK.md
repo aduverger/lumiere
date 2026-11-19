@@ -76,7 +76,8 @@ the thread while Lumiere stays open.
   attaches to the most recently active one. `--agent-block BLOCK` names the pane
   instead. The footer shows the agent and its state, or `no agent`.
 - **Sending.** Lumiere types one line into the agent's prompt, asking it to read the
-  waiting threads. Comment text is never typed. Just before typing, Lumiere checks
+  waiting threads with the binary that runs the review, named by its full path.
+  Comment text is never typed. Just before typing, Lumiere checks
   that the pane still runs `pi`; if not, nothing is typed and the comments stay queued.
 - **Without an agent** (no Rex, or `none` chosen) `Enter` queues, and `s` asks to exit
   and write the queued comments to stdout, as upstream does with annotations.

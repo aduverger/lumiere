@@ -193,14 +193,24 @@ fn find_agent_panes(rex: &dyn Rex, review_roots: &[PathBuf]) -> Vec<AgentPane> {
     panes
 }
 
+/// How the agent calls this lumiere: by the path of the running executable, because
+/// the `lumiere` on the agent's PATH may be missing or another version.
+fn lumiere_command() -> String {
+    match std::env::current_exe() {
+        Ok(executable) => format!("'{}'", executable.display()),
+        Err(_) => "lumiere".to_string(),
+    }
+}
+
 /// The message typed into the agent's prompt. It carries no comment text: the agent
 /// reads the threads itself.
 fn nudge_line(review_path: &Path) -> String {
+    let lumiere = lumiere_command();
     let path = review_path.display();
     format!(
         "Lumiere review: comments are waiting for your reply. \
-         Read them with `lumiere thread list --awaiting --repo '{path}'` and answer each one \
-         with `lumiere thread reply <id> --repo '{path}' --body '<reply>'`. \
+         Read them with `{lumiere} thread list --awaiting --repo '{path}'` and answer each one \
+         with `{lumiere} thread reply <id> --repo '{path}' --body '<reply>'`. \
          Reply in the thread first, in a few sentences, saying whether you agree and what \
          you would change. Edit code only after I approve in that thread."
     )
@@ -432,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nudge_names_the_review_path_and_is_typed_into_the_attached_pane() {
+    fn test_nudge_names_this_executable_and_the_review_path_and_is_typed_into_the_attached_pane() {
         let rex = FakeRex::with(vec![pane("s1", "agent", "pi", "/work", "")]);
         let mut link = attach(&rex, None);
 
@@ -441,7 +451,12 @@ mod tests {
         let typed = rex.typed.borrow();
         assert_eq!(typed.len(), 1);
         assert_eq!(typed[0].0, "agent");
-        assert!(typed[0].1.contains("lumiere thread list --awaiting --repo '/work'"), "{}", typed[0].1);
+        let this_executable = std::env::current_exe().expect("test executable");
+        let list_command = format!(
+            "'{}' thread list --awaiting --repo '/work'",
+            this_executable.display()
+        );
+        assert!(typed[0].1.contains(&list_command), "{}", typed[0].1);
         assert!(!typed[0].1.contains('\n'));
     }
 
