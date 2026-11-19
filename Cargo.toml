@@ -2,6 +2,7 @@
 name = "lumiere"
 version = "2.32.0"
 edition = "2021"
+rust-version = "1.89"
 license = "MIT"
 description = "Review diffs in the terminal and discuss them with your coding agent."
 keywords = ["cli", "terminal", "git", "diff", "review"]
