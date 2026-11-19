@@ -117,8 +117,9 @@ ln -s "$(pwd)/pi-extension" ~/.pi/agent/extensions/lumiere
 ```
 
 Inside [Rex](https://rex.dev) the review opens in a split pane to the right of pi,
-attached to that pi session, and pi stays usable: comments reach the agent and its
-replies appear in the review while it is open.
+zoomed to fill the window, and attached to that pi session. Pi keeps running behind
+it: comments reach the agent and its replies appear in the review while it is open.
+Unzoom the pane in Rex to see pi beside the review.
 
 Elsewhere pi's interface is suspended while Lumiere uses the terminal. Comment, then
 press `s` and Enter: the comments are sent to the agent, which is asked to answer

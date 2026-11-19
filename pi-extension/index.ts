@@ -1,7 +1,7 @@
 /**
  * `/lumiere [args]` opens a Lumiere review.
  *
- * Inside Rex the review opens in a split pane beside pi and is told which pane
+ * Inside Rex the review opens in a zoomed split pane beside pi and is told which pane
  * pi runs in. Comments then reach the agent while the review stays open, and the
  * agent answers in the review with `lumiere thread`.
  *
@@ -22,8 +22,13 @@ const AGENT_BLOCK_FLAG = "--agent-block";
 const REX_SPLIT_DIRECTION = "right";
 const REX_SPLIT_RATIO = "70";
 
-/** Runs the command given as arguments with stdout redirected to the file named by `$0` and stderr to `$1`. */
-const REDIRECT_OUTPUT_TO_FIRST_ARGS = 'out="$0"; err="$1"; shift; "$@" > "$out" 2> "$err"';
+/**
+ * Zooms the pane this runs in to fill its window, then runs the command given as
+ * arguments with stdout redirected to the file named by `$0` and stderr to `$1`.
+ * Rex drops the zoom when the pane closes. A failed zoom leaves the split as it is.
+ */
+const ZOOM_THEN_REDIRECT_OUTPUT_TO_FIRST_ARGS =
+	'rex zoom --on > /dev/null 2>&1; out="$0"; err="$1"; shift; "$@" > "$out" 2> "$err"';
 
 const ANSI_STYLE = /\x1b\[[0-9;]*m/g;
 
@@ -73,7 +78,7 @@ async function runInRexSplit(
 		"--",
 		"sh",
 		"-c",
-		REDIRECT_OUTPUT_TO_FIRST_ARGS,
+		ZOOM_THEN_REDIRECT_OUTPUT_TO_FIRST_ARGS,
 		annotationsPath,
 		errorsPath,
 		LUMIERE_BIN,
