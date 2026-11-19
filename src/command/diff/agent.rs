@@ -195,13 +195,14 @@ fn agent_pane_at(rex: &dyn Rex, session: &RexSession, block: &str) -> Option<Age
     })
 }
 
-/// Panes running the agent in one of `review_roots`, most recently active first.
+/// Panes running the agent in one of `review_roots` or in a folder inside one, most
+/// recently active first.
 fn find_agent_panes(rex: &dyn Rex, review_roots: &[PathBuf]) -> Vec<AgentPane> {
     let mut panes = Vec::new();
     for session in rex.sessions() {
         for block in rex.terminal_blocks(&session.id) {
             let pane = agent_pane_at(rex, &session, &block)
-                .filter(|pane| review_roots.contains(&pane.cwd));
+                .filter(|pane| review_roots.iter().any(|root| pane.cwd.starts_with(root)));
             panes.extend(pane);
         }
     }
@@ -280,7 +281,7 @@ pub struct AgentLink<'r> {
 
 impl<'r> AgentLink<'r> {
     /// Attaches to `agent_block` in the current Rex session when given, otherwise to
-    /// the most recently active agent pane in one of `review_roots`.
+    /// the most recently active agent pane in or under one of `review_roots`.
     pub fn attach(
         rex: &'r dyn Rex,
         agent_block: Option<&str>,
@@ -463,24 +464,26 @@ mod tests {
     }
 
     #[test]
-    fn test_attaches_to_the_latest_agent_pane_at_a_review_root() {
+    fn test_attaches_to_the_latest_agent_pane_in_or_under_a_review_root() {
         let rex = FakeRex::with(vec![
             pane("s1", "older", "pi", "/work/api", "2026-11-18T10:00:00Z"),
-            pane("s1", "shell", "zsh", "/work", "2026-11-18T12:00:00Z"),
+            pane("s1", "shell", "zsh", "/work", "2026-11-18T13:00:00Z"),
             pane("s1", "subdirectory", "pi", "/work/api/src", "2026-11-18T12:00:00Z"),
-            pane("s2", "elsewhere", "pi", "/other", "2026-11-18T12:00:00Z"),
-            pane("s2", "latest", "pi", "/work", "2026-11-18T11:00:00Z"),
+            pane("s2", "elsewhere", "pi", "/other", "2026-11-18T13:00:00Z"),
+            // A sibling whose name only starts like a root.
+            pane("s2", "sibling", "pi", "/workshop", "2026-11-18T13:00:00Z"),
+            pane("s2", "at-the-root", "pi", "/work", "2026-11-18T11:00:00Z"),
         ]);
 
         let link = attach(&rex, None);
 
-        assert_eq!(link.attached_block(), Some("latest"));
+        assert_eq!(link.attached_block(), Some("subdirectory"));
         let candidates: Vec<String> = link
             .candidates(&roots())
             .into_iter()
             .map(|pane| pane.block)
             .collect();
-        assert_eq!(candidates, vec!["latest", "older"]);
+        assert_eq!(candidates, vec!["subdirectory", "at-the-root", "older"]);
     }
 
     #[test]

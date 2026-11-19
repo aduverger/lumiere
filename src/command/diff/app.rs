@@ -398,6 +398,14 @@ fn changes_file(key: &crossterm::event::KeyEvent) -> bool {
         || (matches!(key.code, KeyCode::Char(_)) && key.modifiers.contains(KeyModifiers::CONTROL))
 }
 
+/// The program and arguments in an `EDITOR` value such as `code --wait`, split as a
+/// shell would. A value that cannot be split is taken as one program name.
+fn editor_words(editor: &str) -> Vec<String> {
+    shlex::split(editor)
+        .filter(|words| !words.is_empty())
+        .unwrap_or_else(|| vec![editor.to_string()])
+}
+
 /// Removes the comment the editor was changing, when it was changing one.
 fn remove_edited_comment(state: &mut AppState, editor: &AnnotationEditor) {
     if let (Some(thread_id), Some(comment_id)) = (&editor.thread_id, &editor.comment_id) {
@@ -2228,7 +2236,10 @@ fn run_app_internal<'a>(
                                     None
                                 };
 
-                                let mut editor_command = std::process::Command::new(&editor);
+                                let editor_words = editor_words(&editor);
+                                let mut editor_command =
+                                    std::process::Command::new(&editor_words[0]);
+                                editor_command.args(&editor_words[1..]);
                                 editor_command.current_dir(backend.working_tree_root());
                                 // Captured stdout is reserved for the annotations, so the
                                 // editor draws on the terminal, as the TUI does.
@@ -2245,7 +2256,10 @@ fn run_app_internal<'a>(
                                 if let Some(line) = line_arg {
                                     editor_command.arg(format!("+{}", line));
                                 }
-                                let _ = editor_command.arg(filename).status();
+                                if let Err(error) = editor_command.arg(filename).status() {
+                                    let message = format!("cannot run {}: {}", editor, error);
+                                    notice = Some((message, Instant::now()));
+                                }
 
                                 enable_raw_mode()?;
                                 execute!(
@@ -2588,6 +2602,18 @@ fn generate_file_anchor(filename: &str) -> String {
 mod tests {
     use super::*;
     use crate::command::diff::types::FileDiff;
+
+    #[test]
+    fn test_an_editor_value_is_split_into_its_program_and_arguments() {
+        assert_eq!(editor_words("hx"), ["hx"]);
+        assert_eq!(editor_words("code --wait"), ["code", "--wait"]);
+        assert_eq!(
+            editor_words("'/opt/My Editor/bin/edit' -w"),
+            ["/opt/My Editor/bin/edit", "-w"]
+        );
+        // An unclosed quote cannot be split: the value is tried as it is.
+        assert_eq!(editor_words("it's"), ["it's"]);
+    }
 
     #[test]
     fn test_showing_a_thread_puts_its_first_line_on_the_top_row() {

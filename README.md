@@ -97,8 +97,8 @@ mouse, or focus a hunk with `{` and `}`; with neither, the comment is on the fil
 | `A` | Choose the agent, or none |
 
 - **Agent.** Lumiere looks for [Rex](https://rex.dev) panes running `pi` whose working
-  directory is a reviewed repository or the folder Lumiere was started from. It
-  attaches to the most recently active one; `--agent-block BLOCK` names the pane
+  directory is a reviewed repository, the folder Lumiere was started from, or a folder
+  inside one of them. It attaches to the most recently active one; `--agent-block BLOCK` names the pane
   instead. The footer shows the agent and its state, or `no agent`.
 - **Sending.** Lumiere pastes one message into the agent's prompt and submits it. The
   message holds each comment with its thread id, file, lines and code, and the command
@@ -161,7 +161,8 @@ ln -s "$(pwd)/pi-extension" ~/.pi/agent/extensions/lumiere
 - **Elsewhere** pi is suspended while Lumiere uses the terminal. Comment, then press
   `s` and `Enter`: the comments are sent to the agent. `q` sends nothing.
 
-`e` opens the file in pi's `EDITOR`, or in `vim` when it is not set. `LUMIERE_BIN`
+`e` opens the file in pi's `EDITOR`, or in `vim` when it is not set. The value may
+carry arguments, as in `code --wait`. `LUMIERE_BIN`
 selects the binary when `lumiere` is not on `PATH`. The extension and the binary must
 come from the same version.
 
