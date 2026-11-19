@@ -98,13 +98,13 @@ mouse, or focus a hunk with `[` and `]`; with neither, the comment is on the fil
 
 - **Agent.** Lumiere looks for [Rex](https://rex.dev) panes running `pi` whose working
   directory is a reviewed repository, the folder Lumiere was started from, or a folder
-  inside one of them. It attaches to the most recently active one; `--agent-block BLOCK` names the pane
-  instead. The footer shows the agent and its state, or `no agent`.
+  inside one of them. It attaches to the most recently active one; `--agent-block BLOCK`
+  names the pane instead. The footer shows the agent and its state, or `no agent`.
 - **Sending.** Lumiere pastes one message into the agent's prompt and submits it. The
   message holds each comment with its thread id, file, lines and code, and the command
   to reply with. A follow-up in a thread leaves the code out and says how to read the
-  earlier comments. The agent is asked to reply in the thread first and to edit code only
-  after you approve there.
+  earlier comments. The agent is asked to reply in the thread first and to edit code
+  only after you approve there.
 - **Without an agent** `Enter` queues, and `s` exits and writes the queued comments to
   standard output.
 - **Storage.** Threads are kept per repository, outside it, in
@@ -164,9 +164,8 @@ ln -s "$(pwd)/pi-extension" ~/.pi/agent/extensions/lumiere
   `s` and `Enter`: the comments are sent to the agent. `q` sends nothing.
 
 `e` opens the file in pi's `EDITOR`, or in `vim` when it is not set. The value may
-carry arguments, as in `code --wait`. `LUMIERE_BIN`
-selects the binary when `lumiere` is not on `PATH`. The extension and the binary must
-come from the same version.
+carry arguments, as in `code --wait`. `LUMIERE_BIN` selects the binary when `lumiere`
+is not on `PATH`. The extension and the binary must come from the same version.
 
 ## Keys
 

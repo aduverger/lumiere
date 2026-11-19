@@ -2236,10 +2236,9 @@ fn run_app_internal<'a>(
                                     None
                                 };
 
-                                let editor_words = editor_words(&editor);
-                                let mut editor_command =
-                                    std::process::Command::new(&editor_words[0]);
-                                editor_command.args(&editor_words[1..]);
+                                let words = editor_words(&editor);
+                                let mut editor_command = std::process::Command::new(&words[0]);
+                                editor_command.args(&words[1..]);
                                 editor_command.current_dir(backend.working_tree_root());
                                 // Captured stdout is reserved for the annotations, so the
                                 // editor draws on the terminal, as the TUI does.
