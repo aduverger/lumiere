@@ -17,6 +17,8 @@ a review loop with a coding agent.
   shows everything a branch would add, even after `origin/main` has moved on.
 - `lumiere diff` works from any directory of a repository; files, watch mode and the
   editor are resolved from the repository root.
+- `Option+Down` or `Option+J` opens the next file, `Option+Up` or `Option+K` the
+  previous one (`Alt` elsewhere). Upstream's `Ctrl+J` and `Ctrl+K` still work.
 - Workspace reviews, review threads answered by a coding agent, and the `/lumiere` pi
   command, described below.
 - When stdout is captured, the theme is no longer detected by querying the terminal,
@@ -65,7 +67,7 @@ the thread while Lumiere stays open.
 | `i` | Comment, or reply when the lines already have an open thread. An unsent comment is edited instead. |
 | `Enter` | Save the comment and send it to the agent now. |
 | `Alt+Enter` (Option+Enter), `Ctrl+S` | Save the comment as queued, as `Alt+Enter` queues a message in pi. Use `Ctrl+S` where the terminal does not report `Alt+Enter`. |
-| `Shift+Enter`, `Ctrl+Enter`, `Ctrl+J` | New line. |
+| `Shift+Enter`, `Ctrl+J` | New line. `Ctrl+Enter` does nothing. |
 | `s` | Send every queued comment, as one message. Lumiere stays open. |
 | `x` | Resolve or reopen the thread on the selection, hunk or file. Replying to a resolved thread reopens it. |
 | `A` | Choose the agent, or none. |

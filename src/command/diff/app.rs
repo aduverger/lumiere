@@ -1585,7 +1585,12 @@ fn run_app_internal<'a>(
                                 state.focused_panel = FocusedPanel::DiffView;
                             }
                         }
-                        KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        // Next file: option+down, option+j, and upstream's ctrl+j.
+                        KeyCode::Down | KeyCode::Char('j')
+                            if key.modifiers.contains(KeyModifiers::ALT)
+                                || (key.code == KeyCode::Char('j')
+                                    && key.modifiers.contains(KeyModifiers::CONTROL)) =>
+                        {
                             if !state.file_diffs.is_empty() {
                                 let mut next = state.sidebar_selected + 1;
                                 while next < state.sidebar_visible_len() {
@@ -1603,7 +1608,12 @@ fn run_app_internal<'a>(
                                 }
                             }
                         }
-                        KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        // Previous file: option+up, option+k, and upstream's ctrl+k.
+                        KeyCode::Up | KeyCode::Char('k')
+                            if key.modifiers.contains(KeyModifiers::ALT)
+                                || (key.code == KeyCode::Char('k')
+                                    && key.modifiers.contains(KeyModifiers::CONTROL)) =>
+                        {
                             if !state.file_diffs.is_empty() && state.sidebar_selected > 0 {
                                 let mut prev = state.sidebar_selected - 1;
                                 loop {
@@ -2309,7 +2319,7 @@ fn run_app_internal<'a>(
                                                 description: "Focus sidebar / diff",
                                             },
                                             KeyBind {
-                                                key: "ctrl+j / ctrl+k",
+                                                key: "option+down/j, option+up/k",
                                                 description: "Next / previous file",
                                             },
                                             KeyBind {
@@ -2462,7 +2472,7 @@ fn run_app_internal<'a>(
                                                 description: "In a comment: save and queue",
                                             },
                                             KeyBind {
-                                                key: "shift+enter / ctrl+enter / ctrl+j",
+                                                key: "shift+enter / ctrl+j",
                                                 description: "In a comment: new line",
                                             },
                                             KeyBind {

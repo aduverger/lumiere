@@ -130,8 +130,11 @@ impl<'a> AnnotationEditor<'a> {
                 // Alt+Enter queues, as it queues a follow-up message in pi.
                 if key.modifiers.contains(KeyModifiers::ALT) {
                     self.finish(AnnotationEditorResult::Queue)
-                } else if key.modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL) {
+                } else if key.modifiers.contains(KeyModifiers::SHIFT) {
                     self.textarea.insert_char('\n');
+                    AnnotationEditorResult::Continue
+                } else if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    // Unbound, so that it cannot send a comment by accident.
                     AnnotationEditorResult::Continue
                 } else {
                     self.finish(AnnotationEditorResult::Send)
@@ -316,13 +319,14 @@ mod tests {
     }
 
     #[test]
-    fn test_shift_enter_ctrl_enter_and_ctrl_j_insert_a_newline() {
+    fn test_shift_enter_and_ctrl_j_insert_a_newline_and_ctrl_enter_does_nothing() {
         let mut editor = editor_with("a");
 
         assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::SHIFT), "continue");
-        assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::CONTROL), "continue");
         assert_eq!(press(&mut editor, KeyCode::Char('j'), KeyModifiers::CONTROL), "continue");
+        assert_eq!(editor.content(), "a\n\n");
 
-        assert_eq!(editor.content(), "a\n\n\n");
+        assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::CONTROL), "continue");
+        assert_eq!(editor.content(), "a\n\n");
     }
 }
