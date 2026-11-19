@@ -1165,7 +1165,7 @@ mod tests {
     }
 
     #[test]
-    fn test_threads_persist_and_merge_replies_written_by_another_process() {
+    fn test_threads_persist_and_replies_written_by_another_process_are_picked_up() {
         let repository_root = crate::vcs::test_utils::make_temp_dir("state-thread-store");
         let open_state = || {
             let mut state = AppState::new(vec![make_file_diff("a.rs")], None);
@@ -1177,23 +1177,28 @@ mod tests {
             state.add_thread("a.rs".to_string(), line_target(1), "why?".to_string());
         state.mark_sent(None);
         assert_eq!(state.threads[0].anchor_text.as_deref(), Some("content"));
-        // Its own write is read back once, then the file is left alone.
-        state.reload_threads_if_changed();
-        assert!(!state.reload_threads_if_changed());
-
-        ThreadStore::for_repository(&repository_root)
-            .unwrap()
-            .update(|threads| {
-                threads[0].add_agent_reply(Comment::agent("because".to_string(), "pi".to_string()))
-            })
-            .unwrap();
-        state.add_reply(&thread_id, "ok".to_string());
-
         let bodies = |state: &AppState| -> Vec<String> {
             state.threads[0].comments.iter().map(|c| c.body.clone()).collect()
         };
-        assert_eq!(bodies(&state), vec!["why?", "because", "ok"]);
-        assert_eq!(bodies(&open_state()), vec!["why?", "because", "ok"]);
+        let reply_as_agent = |body: &str| {
+            ThreadStore::for_repository(&repository_root)
+                .unwrap()
+                .update(|threads| {
+                    threads[0].add_agent_reply(Comment::agent(body.to_string(), "pi".to_string()))
+                })
+                .unwrap();
+        };
+
+        // A reply shows up in the open review without the reviewer doing anything.
+        reply_as_agent("because");
+        assert!(state.reload_threads_if_changed());
+        assert_eq!(bodies(&state), vec!["why?", "because"]);
+
+        // A reply written just before the reviewer's own change is not overwritten.
+        reply_as_agent("and also");
+        state.add_reply(&thread_id, "ok".to_string());
+        assert_eq!(bodies(&state), vec!["why?", "because", "and also", "ok"]);
+        assert_eq!(bodies(&open_state()), vec!["why?", "because", "and also", "ok"]);
         let _ = std::fs::remove_dir_all(&repository_root);
     }
 

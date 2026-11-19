@@ -301,12 +301,17 @@ mod tests {
     }
 
     #[test]
-    fn test_enter_sends_and_ctrl_enter_or_ctrl_s_queue() {
+    fn test_enter_sends_and_ctrl_enter_or_ctrl_s_queue_unless_the_comment_is_empty() {
         let mut editor = editor_with("note");
 
         assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::NONE), "send");
         assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::CONTROL), "queue");
         assert_eq!(press(&mut editor, KeyCode::Char('s'), KeyModifiers::CONTROL), "queue");
+
+        let mut empty_editor = editor_with("  ");
+
+        assert_eq!(press(&mut empty_editor, KeyCode::Enter, KeyModifiers::NONE), "cancel");
+        assert_eq!(press(&mut empty_editor, KeyCode::Enter, KeyModifiers::CONTROL), "cancel");
     }
 
     #[test]
@@ -318,13 +323,5 @@ mod tests {
         assert_eq!(press(&mut editor, KeyCode::Char('j'), KeyModifiers::CONTROL), "continue");
 
         assert_eq!(editor.content(), "a\n\n\n");
-    }
-
-    #[test]
-    fn test_an_empty_new_comment_is_dropped_whichever_key_saves_it() {
-        let mut editor = editor_with("  ");
-
-        assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::NONE), "cancel");
-        assert_eq!(press(&mut editor, KeyCode::Enter, KeyModifiers::CONTROL), "cancel");
     }
 }
