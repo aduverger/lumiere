@@ -17,7 +17,8 @@ a review loop with a coding agent.
   shows everything a branch would add, even after `origin/main` has moved on.
 - `lumiere diff` works from any directory of a repository; files, watch mode and the
   editor are resolved from the repository root.
-- Workspace reviews and the `/lumiere` pi command, described below.
+- Workspace reviews, review threads answered by a coding agent, and the `/lumiere` pi
+  command, described below.
 - When stdout is captured, the theme is no longer detected by querying the terminal,
   because the query was written into the captured annotations. Set `--theme`,
   `LUMEN_THEME` or the config file if the default dark theme does not suit.
@@ -41,18 +42,63 @@ lumiere diff origin/main...-
 - Only immediate child directories count. Symlinks and plain folders are ignored.
   Git and Jujutsu repositories are both detected.
 - The first repository, by name, that has changes opens first.
-- `R` opens the repository list. Each repository keeps its own annotations, viewed
-  files and position while Lumiere is open.
+- `R` opens the repository list. Each repository keeps its own threads, viewed files
+  and position while Lumiere is open.
 - A repository where the requested revision does not exist (for example no
   `origin/main`) stays in the list; choosing it shows the error and leaves the current
   review on screen.
-- `s` sends the annotations of every repository, each group under a
-  `# Repository: name (path)` heading.
+- `s` sends the queued comments of every repository. Without an agent they are
+  written to stdout, each group under a `# Repository: name (path)` heading.
 - `--pr`, `--detect-pr` and `--stacked` need a single repository.
-- The annotation list (`I`), including its copy and export actions, covers the
+- The thread list (`I`), including its copy and export actions, covers the
   repository on screen only.
 - With watch mode on, only the repository on screen is watched. Coming back to another
   one reloads it.
+
+## Review threads
+
+A comment starts a thread on a selection, a hunk or a file. The agent answers inside
+the thread while Lumiere stays open.
+
+| Key | Effect |
+|---|---|
+| `i` | Comment, or reply when the lines already have an open thread. An unsent comment is edited instead. |
+| `Enter` | Save the comment and send it to the agent now. |
+| `Ctrl+Enter`, `Ctrl+S` | Save the comment as queued. Use `Ctrl+S` where the terminal reports `Ctrl+Enter` as `Enter`. |
+| `Shift+Enter`, `Alt+Enter`, `Ctrl+J` | New line. |
+| `s` | Send every queued comment, as one message. Lumiere stays open. |
+| `x` | Resolve or reopen the thread on the selection, hunk or file. Replying to a resolved thread reopens it. |
+| `A` | Choose the agent, or none. |
+| `I` | List the threads of the repository. |
+
+- **Agent.** Lumiere looks for [Rex](https://rex.dev) panes running `pi` whose working
+  directory is a reviewed repository or the folder Lumiere was started from, and
+  attaches to the most recently active one. `--agent-block BLOCK` names the pane
+  instead. The footer shows the agent and its state, or `no agent`.
+- **Sending.** Lumiere types one line into the agent's prompt, asking it to read the
+  waiting threads. Comment text is never typed. Just before typing, Lumiere checks
+  that the pane still runs `pi`; if not, nothing is typed and the comments stay queued.
+- **Without an agent** (no Rex, or `none` chosen) `Enter` queues, and `s` asks to exit
+  and write the queued comments to stdout, as upstream does with annotations.
+- **Quitting with queued comments** asks whether to send them, keep them queued or
+  cancel.
+- **Storage.** Threads are kept per repository in
+  `<state dir>/lumiere/<hash of the repository root>/threads.json`
+  (`~/.local/state` on Linux), outside the repository. They are shared by every diff
+  range reviewed there and come back when Lumiere is restarted.
+- **Outdated.** When the diff changes, a thread follows its lines if their text is
+  found unchanged at exactly one place on the same side of the file. Otherwise it is
+  marked `outdated`; the mark goes away if the text comes back.
+
+The agent uses two commands, from the repository or the workspace folder:
+
+```bash
+lumiere thread list [--awaiting] [--json] [--repo PATH]
+lumiere thread reply <thread-id> (--body TEXT | --stdin) [--repo PATH] [--author NAME]
+```
+
+`--awaiting` keeps the open threads whose last sent comment is the reviewer's. Queued
+comments are hidden from both commands, and a resolved thread cannot be replied to.
 
 ## pi extension
 
@@ -64,16 +110,20 @@ ln -s "$(pwd)/pi-extension" ~/.pi/agent/extensions/lumiere
 ```
 
 ```
-/lumiere                    review origin/main...-
+/lumiere                    review origin/main...- with watch mode on
 /lumiere diff HEAD~3..-     any lumiere arguments
 ```
 
-Inside [Rex](https://rex.dev) the review opens in a split pane to the right of pi.
-Elsewhere pi's interface is suspended while Lumiere uses the terminal. Annotate, then
-press `s` and Enter: the annotations are sent to the agent, which is asked to answer
-each comment and to change code only after you approve. `q` cancels and sends nothing.
+Inside [Rex](https://rex.dev) the review opens in a split pane to the right of pi,
+attached to that pi session, and pi stays usable: comments reach the agent and its
+replies appear in the review while it is open.
 
-`LUMIERE_BIN` selects the binary when `lumiere` is not on `PATH`.
+Elsewhere pi's interface is suspended while Lumiere uses the terminal. Comment, then
+press `s` and Enter: the comments are sent to the agent, which is asked to answer
+each one and to change code only after you approve. `q` cancels and sends nothing.
+
+`LUMIERE_BIN` selects the binary when `lumiere` is not on `PATH`. The extension and
+the binary must come from the same version: `/lumiere` passes `--agent-block`.
 
 ## Upstream updates
 
