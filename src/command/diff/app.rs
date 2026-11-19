@@ -1576,8 +1576,10 @@ fn run_app_internal<'a>(
                             state.search_state.clear();
                             state.mark_search_dirty();
                         }
-                        KeyCode::Char('q') | KeyCode::Esc | KeyCode::Char('c')
-                            if key.code != KeyCode::Char('c')
+                        // Esc does not quit: it also leaves a comment, a search and
+                        // every list, so one press too many would end the review.
+                        KeyCode::Char('q') | KeyCode::Char('c')
+                            if key.code == KeyCode::Char('q')
                                 || key.modifiers.contains(KeyModifiers::CONTROL) =>
                         {
                             let queued = queued_total(&state, workspace_session.as_ref());
@@ -2341,7 +2343,7 @@ fn run_app_internal<'a>(
                                         title: "Global",
                                         bindings: vec![
                                             KeyBind {
-                                                key: "q / esc",
+                                                key: "q",
                                                 description: "Quit",
                                             },
                                             KeyBind {

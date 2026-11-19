@@ -186,7 +186,7 @@ is not on `PATH`. The extension and the binary must come from the same version.
 | `e` | Open the file in `EDITOR` |
 | `y` | Copy the selection, or the file name |
 | `R` | Switch repository in a workspace |
-| `q`, `Esc` | Quit |
+| `q` | Quit |
 
 `Option` is `Alt` outside macOS.
 
