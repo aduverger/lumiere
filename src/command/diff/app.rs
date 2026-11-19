@@ -282,9 +282,7 @@ fn count_of(count: usize, noun: &str) -> String {
 /// What `i` and `x` act on in the current file: the selected lines, otherwise the
 /// focused hunk, otherwise the whole file.
 fn target_at_cursor(state: &mut AppState) -> Option<(String, AnnotationTarget)> {
-    let diff = state.file_diffs.get(state.current_file)?;
-    let filename = diff.filename.clone();
-    let is_deleted = !diff.old_content.is_empty() && diff.new_content.is_empty();
+    let filename = state.file_diffs.get(state.current_file)?.filename.clone();
 
     if state.selection.is_active() && !matches!(state.selection.mode, SelectionMode::None) {
         // Line-mode and character-mode selections both cover full lines.
@@ -320,19 +318,17 @@ fn target_at_cursor(state: &mut AppState) -> Option<(String, AnnotationTarget)> 
             .skip(hunk_start)
             .take_while(|row| !matches!(row.change_type, ChangeType::Equal))
     };
-    // The lines the hunk has on the new side. Rows that only remove lines have none
-    // there, so a hunk that only removes is commented on the old side.
     let lines_on = |panel: DiffPanelFocus| {
         let mut lines = hunk_rows().filter_map(move |row| row.line_number(panel));
         let start_line = lines.next()?;
         Some((panel, start_line, lines.last().unwrap_or(start_line)))
     };
-    let (panel, start_line, end_line) = if is_deleted {
-        lines_on(DiffPanelFocus::Old)
-    } else {
-        lines_on(DiffPanelFocus::New).or_else(|| lines_on(DiffPanelFocus::Old))
-    }
-    .unwrap_or((DiffPanelFocus::New, 1, 1));
+    // The lines the hunk has on the new side. A row that only removes a line has none
+    // there, so a hunk that only removes, as in a deleted file, is commented on the
+    // old side.
+    let (panel, start_line, end_line) = lines_on(DiffPanelFocus::New)
+        .or_else(|| lines_on(DiffPanelFocus::Old))
+        .unwrap_or((DiffPanelFocus::New, 1, 1));
     Some((
         filename,
         AnnotationTarget::LineRange {
@@ -2659,6 +2655,8 @@ mod tests {
             hunk_target("keep\ngone 1\ngone 2\nend\n", "keep\nend\n"),
             lines(DiffPanelFocus::Old, 2, 3)
         );
+        // A deleted file.
+        assert_eq!(hunk_target("gone 1\ngone 2\n", ""), lines(DiffPanelFocus::Old, 1, 2));
     }
 
     #[test]
