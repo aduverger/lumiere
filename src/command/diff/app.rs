@@ -1084,29 +1084,27 @@ fn run_app_internal<'a>(
                                             terminal.size()?.height.saturating_sub(5) as usize;
                                         ensure_sidebar_visible(&mut state, visible_height);
                                     }
-                                    // Compute max_scroll for the just-switched file
-                                    // before pinning scroll, so we don't overscroll
-                                    // past the last visible row.
                                     let panel = match panel {
                                         MatchPanel::Old => DiffPanelFocus::Old,
                                         MatchPanel::New => DiffPanelFocus::New,
                                     };
+                                    let row_of_match = |state: &AppState| {
+                                        find_sbs_index_for_line(state.side_by_side_ref(), panel, line_no)
+                                    };
                                     state.ensure_cache();
-                                    let mut row =
-                                        find_sbs_index_for_line(state.side_by_side_ref(), panel, line_no);
+                                    let mut row = row_of_match(&state);
                                     if row.is_none() && state.settings.hunks_only {
                                         // The search covers whole files; hunks-only view hides this line.
                                         state.set_hunks_only(false, 0);
-                                        row = find_sbs_index_for_line(
-                                            state.side_by_side_ref(),
-                                            panel,
-                                            line_no,
-                                        );
+                                        row = row_of_match(&state);
                                         notice = Some((
                                             "full file: the match is outside the hunks".to_string(),
                                             Instant::now(),
                                         ));
                                     }
+                                    // Compute max_scroll for the just-switched file
+                                    // before pinning scroll, so we don't overscroll
+                                    // past the last visible row.
                                     let sbs_len = state.side_by_side_ref().len();
                                     let vh = terminal.size()?.height.saturating_sub(5) as usize;
                                     let max_scroll = sbs_len.saturating_sub(vh) as u16;

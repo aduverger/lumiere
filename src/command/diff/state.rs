@@ -275,7 +275,6 @@ impl AppState {
         (0, 0)
     }
 
-    /// Get cached side_by_side diff for current file, computing if necessary
     /// Get cached hunk starts for current file
     pub fn get_hunks(&mut self) -> &[usize] {
         self.ensure_cache();
