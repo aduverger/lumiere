@@ -7,6 +7,8 @@ use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
+use super::review_thread::EARLIER_COMMENTS_LABEL;
+
 const AGENT_PROGRAM: &str = "pi";
 
 pub struct RexSession {
@@ -207,28 +209,56 @@ fn find_agent_panes(rex: &dyn Rex, review_roots: &[PathBuf]) -> Vec<AgentPane> {
     panes
 }
 
-/// How the agent calls this lumiere: by the path of the running executable, because
-/// the `lumiere` on the agent's PATH may be missing or another version.
+/// How the agent calls this lumiere: `lumiere` when that name on PATH is the running
+/// executable, else the executable's path, because the `lumiere` on the agent's PATH
+/// may be missing or another version.
 fn lumiere_command() -> String {
     match std::env::current_exe() {
-        Ok(executable) => format!("'{}'", executable.display()),
-        Err(_) => "lumiere".to_string(),
+        Ok(executable) => command_for(&executable, std::env::var_os("PATH").as_deref()),
+        Err(_) => PROGRAM_NAME.to_string(),
+    }
+}
+
+const PROGRAM_NAME: &str = "lumiere";
+
+fn command_for(executable: &Path, path_variable: Option<&std::ffi::OsStr>) -> String {
+    let first_on_path = path_variable
+        .into_iter()
+        .flat_map(std::env::split_paths)
+        .map(|directory| directory.join(PROGRAM_NAME))
+        .find(|candidate| candidate.is_file());
+    let same_file = |candidate: PathBuf| {
+        candidate.canonicalize().ok().is_some_and(|found| Some(found) == executable.canonicalize().ok())
+    };
+    if first_on_path.is_some_and(same_file) {
+        PROGRAM_NAME.to_string()
+    } else {
+        format!("'{}'", executable.display())
     }
 }
 
 /// The message pasted into the agent's prompt: how to answer, then `comments`, the
 /// comments themselves under their threads, so that the agent has nothing to look up
-/// before replying. Control characters are dropped: one of them could end the paste
-/// early, and the rest of the text would then be read as keys.
+/// before replying. How to read earlier comments is said only when a thread has some.
+/// Control characters are dropped: one of them could end the paste early, and the
+/// rest of the text would then be read as keys.
 fn message_for_agent(review_path: &Path, comments: &str) -> String {
     let lumiere = lumiere_command();
     let path = review_path.display();
+    let continues_a_thread = comments
+        .lines()
+        .any(|line| line.starts_with("## Thread ") && line.contains(EARLIER_COMMENTS_LABEL));
+    let earlier_comments = if continues_a_thread {
+        format!(" Earlier comments of a thread: {lumiere} thread list --repo '{path}'")
+    } else {
+        String::new()
+    };
     let message = format!(
         "Lumiere review comments. Answer each thread below with:\n\
          {lumiere} thread reply <thread-id> --repo '{path}' --body '<reply>'\n\
          Reply in the thread first, in a few sentences, saying whether you agree and what \
-         you would change. Edit code only after I approve in that thread. \
-         Earlier comments of a thread: {lumiere} thread list --repo '{path}'\n\n\
+         you would change. Edit code only after I approve in that thread.\
+         {earlier_comments}\n\n\
          {comments}"
     );
     message
@@ -485,6 +515,35 @@ mod tests {
             "{}",
             typed[0].1
         );
+    }
+
+    #[test]
+    fn test_reading_earlier_comments_is_explained_only_when_a_thread_has_some() {
+        let first_comment = "## Thread 1a2b · a.rs line 2 (RIGHT)\n\nyou: why?";
+        let follow_up = "## Thread 1a2b · a.rs line 2 (RIGHT) · earlier comments: 2\n\nyou: ok";
+
+        let without = message_for_agent(Path::new("/work"), first_comment);
+        let with = message_for_agent(Path::new("/work"), follow_up);
+
+        assert!(!without.contains("thread list"), "{}", without);
+        assert!(with.contains("thread list --repo '/work'"), "{}", with);
+    }
+
+    #[test]
+    fn test_the_agent_is_given_the_short_name_only_when_path_leads_to_this_executable() {
+        let installed = tempfile::tempdir().expect("temp dir");
+        let elsewhere = tempfile::tempdir().expect("temp dir");
+        let executable = installed.path().join("lumiere");
+        std::fs::write(&executable, "").expect("executable");
+        std::fs::write(elsewhere.path().join("lumiere"), "").expect("another lumiere");
+        let path_of = |directories: &[&Path]| std::env::join_paths(directories).expect("PATH");
+
+        let on_path = path_of(&[installed.path(), elsewhere.path()]);
+        let shadowed = path_of(&[elsewhere.path(), installed.path()]);
+
+        assert_eq!(command_for(&executable, Some(&on_path)), "lumiere");
+        assert_eq!(command_for(&executable, Some(&shadowed)), format!("'{}'", executable.display()));
+        assert_eq!(command_for(&executable, None), format!("'{}'", executable.display()));
     }
 
     #[test]
