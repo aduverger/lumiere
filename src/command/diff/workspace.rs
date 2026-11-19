@@ -164,14 +164,8 @@ impl<'a> WorkspaceSession<'a> {
             .filter(|(index, _)| only.is_none() || *index == self.active)
             .filter_map(|(index, repository)| {
                 let text = self.state_of(index, active_state)?.queued_text_for_agent(only);
-                (!text.is_empty()).then(|| {
-                    format!(
-                        "# Repository: {} ({})\n\n{}",
-                        repository.name,
-                        repository.path.display(),
-                        text
-                    )
-                })
+                (!text.is_empty())
+                    .then(|| repository_section(&repository.name, &repository.path, &text))
             })
             .collect::<Vec<_>>()
             .join("\n\n")
@@ -280,15 +274,15 @@ fn format_repository_sections(sections: &[(&str, &Path, &AppState)], only_queued
                 .any(|thread| !only_queued || thread.queued_count() > 0)
         })
         .map(|(name, path, state)| {
-            format!(
-                "# Repository: {} ({})\n\n{}",
-                name,
-                path.display(),
-                state.format_threads_for_export(only_queued)
-            )
+            repository_section(name, path, &state.format_threads_for_export(only_queued))
         })
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+/// `content` under a heading naming the repository and its absolute path.
+fn repository_section(name: &str, path: &Path, content: &str) -> String {
+    format!("# Repository: {} ({})\n\n{}", name, path.display(), content)
 }
 
 #[cfg(test)]

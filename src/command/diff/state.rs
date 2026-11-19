@@ -963,11 +963,11 @@ impl AppState {
                 let comments: Vec<&Comment> = thread
                     .comments
                     .iter()
-                    .filter(|comment| comment.queued)
                     .filter(|comment| {
-                        only.is_none_or(|(thread_id, comment_id)| {
-                            thread.id == thread_id && comment.id == comment_id
-                        })
+                        comment.queued
+                            && only.is_none_or(|(thread_id, comment_id)| {
+                                thread.id == thread_id && comment.id == comment_id
+                            })
                     })
                     .collect();
                 (!comments.is_empty()).then(|| thread.describe(comments.into_iter()))

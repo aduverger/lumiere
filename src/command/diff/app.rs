@@ -390,6 +390,13 @@ fn save_comment(state: &mut AppState, editor: &AnnotationEditor) -> Option<(Stri
     }
 }
 
+/// Whether an arrow or `j`/`k` key press asks for another file instead of scrolling:
+/// with option held, or with ctrl held on a letter.
+fn changes_file(key: &crossterm::event::KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::ALT)
+        || (matches!(key.code, KeyCode::Char(_)) && key.modifiers.contains(KeyModifiers::CONTROL))
+}
+
 /// Removes the comment the editor was changing, when it was changing one.
 fn remove_edited_comment(state: &mut AppState, editor: &AnnotationEditor) {
     if let (Some(thread_id), Some(comment_id)) = (&editor.thread_id, &editor.comment_id) {
@@ -1586,11 +1593,7 @@ fn run_app_internal<'a>(
                             }
                         }
                         // Next file: option+down, option+k, ctrl+k.
-                        KeyCode::Down | KeyCode::Char('k')
-                            if key.modifiers.contains(KeyModifiers::ALT)
-                                || (key.code == KeyCode::Char('k')
-                                    && key.modifiers.contains(KeyModifiers::CONTROL)) =>
-                        {
+                        KeyCode::Down | KeyCode::Char('k') if changes_file(&key) => {
                             if !state.file_diffs.is_empty() {
                                 let mut next = state.sidebar_selected + 1;
                                 while next < state.sidebar_visible_len() {
@@ -1609,11 +1612,7 @@ fn run_app_internal<'a>(
                             }
                         }
                         // Previous file: option+up, option+j, ctrl+j.
-                        KeyCode::Up | KeyCode::Char('j')
-                            if key.modifiers.contains(KeyModifiers::ALT)
-                                || (key.code == KeyCode::Char('j')
-                                    && key.modifiers.contains(KeyModifiers::CONTROL)) =>
-                        {
+                        KeyCode::Up | KeyCode::Char('j') if changes_file(&key) => {
                             if !state.file_diffs.is_empty() && state.sidebar_selected > 0 {
                                 let mut prev = state.sidebar_selected - 1;
                                 loop {
