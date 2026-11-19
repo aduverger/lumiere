@@ -83,8 +83,9 @@ the thread while Lumiere stays open.
   message holds each comment with its thread id, file, lines and the code it is about,
   and the reply command: `lumiere` when that name on `PATH` is the binary running the
   review, else that binary's full path. The agent can answer without looking anything
-  up; how to read earlier comments is said only when a thread has some. Just before pasting, Lumiere checks
-  that the pane still runs `pi`; if not, nothing is sent and the comments stay queued.
+  up; how to read earlier comments is said only when a thread has some. Just before
+  pasting, Lumiere checks that the pane still runs `pi`; if not, nothing is sent and
+  the comments stay queued.
 - **Without an agent** (no Rex, or `none` chosen) `Enter` queues, and `s` asks to exit
   and write the queued comments to stdout, as upstream does with annotations.
 - **Quitting with queued comments** asks whether to send them, keep them queued or

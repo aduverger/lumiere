@@ -40,20 +40,19 @@ pub fn setup_watcher(root: &Path) -> Option<(WatchHandle, Receiver<WatchEvent>)>
 
     let (event_tx, event_rx) = mpsc::channel();
     let root = root.to_path_buf();
+    let relative_to_root = move |path: PathBuf| {
+        path.strip_prefix(&root).unwrap_or(&path).to_string_lossy().to_string()
+    };
     // Ends when the watcher is dropped, or when nobody listens any more.
     thread::spawn(move || {
         while let Ok(first_path) = changed_path_rx.recv() {
-            let mut changed_paths = vec![first_path];
+            let mut changed_files = HashSet::from([relative_to_root(first_path)]);
             let gathered_until = Instant::now() + GATHERING_TIME;
             while let Ok(path) = changed_path_rx
                 .recv_timeout(gathered_until.saturating_duration_since(Instant::now()))
             {
-                changed_paths.push(path);
+                changed_files.insert(relative_to_root(path));
             }
-            let changed_files = changed_paths
-                .iter()
-                .map(|path| path.strip_prefix(&root).unwrap_or(path).to_string_lossy().to_string())
-                .collect();
             if event_tx.send(WatchEvent { changed_files }).is_err() {
                 break;
             }

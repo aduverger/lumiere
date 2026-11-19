@@ -209,6 +209,8 @@ fn find_agent_panes(rex: &dyn Rex, review_roots: &[PathBuf]) -> Vec<AgentPane> {
     panes
 }
 
+const PROGRAM_NAME: &str = "lumiere";
+
 /// How the agent calls this lumiere: `lumiere` when that name on PATH is the running
 /// executable, else the executable's path, because the `lumiere` on the agent's PATH
 /// may be missing or another version.
@@ -219,18 +221,19 @@ fn lumiere_command() -> String {
     }
 }
 
-const PROGRAM_NAME: &str = "lumiere";
-
 fn command_for(executable: &Path, path_variable: Option<&std::ffi::OsStr>) -> String {
     let first_on_path = path_variable
         .into_iter()
         .flat_map(std::env::split_paths)
         .map(|directory| directory.join(PROGRAM_NAME))
         .find(|candidate| candidate.is_file());
-    let same_file = |candidate: PathBuf| {
-        candidate.canonicalize().ok().is_some_and(|found| Some(found) == executable.canonicalize().ok())
+    let is_the_executable = |candidate: &PathBuf| {
+        matches!(
+            (candidate.canonicalize(), executable.canonicalize()),
+            (Ok(candidate), Ok(executable)) if candidate == executable
+        )
     };
-    if first_on_path.is_some_and(same_file) {
+    if first_on_path.as_ref().is_some_and(is_the_executable) {
         PROGRAM_NAME.to_string()
     } else {
         format!("'{}'", executable.display())
