@@ -63,6 +63,9 @@ async function runInRexSplit(
 	annotationsPath: string,
 	errorsPath: string,
 ): Promise<ReviewRun> {
+	// A Rex pane starts from Rex's environment, not pi's, so the editor that `e`
+	// opens is passed on the command line.
+	const editor = process.env.EDITOR;
 	const result = await pi.exec("rex", [
 		"split",
 		"-s",
@@ -76,6 +79,7 @@ async function runInRexSplit(
 		"-c",
 		cwd,
 		"--",
+		...(editor ? ["env", `EDITOR=${editor}`] : []),
 		"sh",
 		"-c",
 		ZOOM_THEN_REDIRECT_OUTPUT_TO_FIRST_ARGS,

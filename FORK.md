@@ -129,6 +129,9 @@ Elsewhere pi's interface is suspended while Lumiere uses the terminal. Comment, 
 press `s` and Enter: the comments are sent to the agent, which is asked to answer
 each one and to change code only after you approve. `q` cancels and sends nothing.
 
+`e` opens the file in pi's `EDITOR`. The extension passes it to the review pane,
+which does not inherit pi's environment; without `EDITOR`, Lumiere opens `vim`.
+
 `LUMIERE_BIN` selects the binary when `lumiere` is not on `PATH`. The extension and
 the binary must come from the same version: `/lumiere` passes `--agent-block`.
 
