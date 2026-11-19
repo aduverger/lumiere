@@ -6,6 +6,7 @@ use ratatui::{
 };
 
 use crate::command::diff::context::{compute_context_lines, ContextLine};
+use crate::command::diff::diff_algo::hunk_comment_lines;
 use crate::command::diff::highlight::{highlight_line_spans, FileHighlighter};
 use crate::command::diff::search::{MatchPanel, SearchState};
 use crate::command::diff::theme;
@@ -1926,8 +1927,16 @@ pub fn render_diff(
         let line_targets = slot_targets(&line_slots);
         let ann_index_ranges = compute_target_index_ranges(&line_targets, side_by_side);
 
+        // The focus bar marks the lines a comment on the focused hunk would be attached to.
+        let commented_side = focused_hunk
+            .and_then(|hunk_idx| hunks.get(hunk_idx))
+            .and_then(|&hunk_start| hunk_comment_lines(side_by_side, hunk_start, diff_fullscreen))
+            .map(|(panel, _, _)| panel);
+
         // Track rendered rows for new-panel border annotation markers (paragraph-relative)
         let mut border_marker_rows: Vec<usize> = Vec::new();
+        // Rows where the focus bar is drawn on the border the two panels share.
+        let mut border_focus_rows: Vec<usize> = Vec::new();
         let mut rendered_row = content_row_offset;
 
         let focus_style = Style::default().fg(t.ui.border_focused);
@@ -1985,8 +1994,24 @@ pub fn render_diff(
             let new_in_annotation =
                 is_in_ann_range(line_idx, Some(DiffPanelFocus::New), &ann_index_ranges);
 
+            // On the commented side, next to its lines. When that side is not shown,
+            // on every row of the hunk in the panel that is.
+            let focus_on_old = in_focused
+                && match commented_side {
+                    Some(DiffPanelFocus::Old) => diff_line.old_line.is_some(),
+                    _ => new_area.is_none(),
+                };
+            let focus_on_new = in_focused
+                && match commented_side {
+                    Some(DiffPanelFocus::New) => diff_line.new_line.is_some(),
+                    _ => old_area.is_none(),
+                };
+
             if new_in_annotation {
                 border_marker_rows.push(rendered_row);
+            }
+            if focus_on_new {
+                border_focus_rows.push(rendered_row);
             }
             rendered_row += 1;
 
@@ -2000,7 +2025,7 @@ pub fn render_diff(
             if old_area.is_some() {
                 let mut old_spans: Vec<Span> = Vec::new();
                 old_spans.push(make_indicator_span(
-                    in_focused,
+                    focus_on_old,
                     old_in_annotation,
                     old_line_selected,
                     bg,
@@ -2107,7 +2132,7 @@ pub fn render_diff(
                 let mut new_spans: Vec<Span> = Vec::new();
                 if old_area.is_none() {
                     new_spans.push(make_indicator_span(
-                        in_focused,
+                        focus_on_new,
                         new_in_annotation,
                         new_line_selected,
                         bg,
@@ -2297,19 +2322,23 @@ pub fn render_diff(
             frame.render_widget(new_para, area);
         }
 
-        // Render annotation gutter markers on the shared border for new panel annotations
+        // The new panel has no column of its own for markers when both panels are shown:
+        // its annotation markers and its focus bar go on the border it shares with the
+        // old panel. The focus bar is drawn last, as it wins in a panel's own column.
         if let (Some(old_a), Some(_)) = (old_area, new_area) {
             let border_x = old_a.x + old_a.width - 1; // Right border of old panel
             let content_start = old_a.y + 1; // After top border of block
             let buf = frame.buffer_mut();
 
-            for &para_row in &border_marker_rows {
+            let markers = border_marker_rows.iter().map(|&row| (row, t.ui.highlight));
+            let focus_bar = border_focus_rows.iter().map(|&row| (row, t.ui.border_focused));
+            for (para_row, color) in markers.chain(focus_bar) {
                 let screen_row = content_start + para_row as u16;
                 if screen_row < old_a.y + old_a.height - 1 {
                     if let Some(cell) =
                         buf.cell_mut(ratatui::layout::Position::new(border_x, screen_row))
                     {
-                        cell.set_fg(t.ui.highlight);
+                        cell.set_fg(color);
                         cell.set_char('▎');
                     }
                 }

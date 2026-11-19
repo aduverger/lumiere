@@ -84,6 +84,8 @@ back, keeping the focused hunk in place.
 
 A comment starts a thread on a selection, a hunk or a file. Select lines with the
 mouse, or focus a hunk with `[` and `]`; with neither, the comment is on the file.
+A hunk comment goes on the hunk's new lines, or on its old lines when only the old
+panel is shown (`0`).
 
 | Key | Effect |
 |---|---|

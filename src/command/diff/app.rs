@@ -39,6 +39,7 @@ fn open_tui_writer() -> io::Result<Box<dyn Write + Send>> {
 use super::agent::{AgentLink, AgentPane, RexCli};
 use super::annotation::{AnnotationEditor, AnnotationEditorResult};
 use super::coordinates::{extract_selected_text, PanelLayout};
+use super::diff_algo::hunk_comment_lines;
 use super::git::{
     get_current_branch, load_file_diffs, load_pr_file_diffs, load_single_commit_diffs,
 };
@@ -53,7 +54,7 @@ use super::review_thread::{AnnotationTarget, Thread};
 use super::search::MatchPanel;
 use super::thread_store::ThreadStore;
 use super::types::{
-    ChangeType, CursorPosition, DiffFullscreen, DiffPanelFocus, FileStatus, FocusedPanel,
+    CursorPosition, DiffFullscreen, DiffPanelFocus, FileStatus, FocusedPanel,
     SelectionMode, SidebarItem,
 };
 use super::watcher::{setup_watcher, WatchEvent};
@@ -311,23 +312,9 @@ fn target_at_cursor(state: &mut AppState) -> Option<(String, AnnotationTarget)> 
     };
 
     state.ensure_cache();
-    let rows = state.side_by_side_ref();
     let hunk_start = state.hunks_ref().get(hunk_index).copied().unwrap_or(0);
-    let hunk_rows = || {
-        rows.iter()
-            .skip(hunk_start)
-            .take_while(|row| !matches!(row.change_type, ChangeType::Equal))
-    };
-    let lines_on = |panel: DiffPanelFocus| {
-        let mut lines = hunk_rows().filter_map(move |row| row.line_number(panel));
-        let start_line = lines.next()?;
-        Some((panel, start_line, lines.last().unwrap_or(start_line)))
-    };
-    // The lines the hunk has on the new side. A row that only removes a line has none
-    // there, so a hunk that only removes, as in a deleted file, is commented on the
-    // old side.
-    let (panel, start_line, end_line) = lines_on(DiffPanelFocus::New)
-        .or_else(|| lines_on(DiffPanelFocus::Old))
+    let (panel, start_line, end_line) =
+        hunk_comment_lines(state.side_by_side_ref(), hunk_start, state.diff_fullscreen)
         .unwrap_or((DiffPanelFocus::New, 1, 1));
     Some((
         filename,
@@ -2657,6 +2644,22 @@ mod tests {
         );
         // A deleted file.
         assert_eq!(hunk_target("gone 1\ngone 2\n", ""), lines(DiffPanelFocus::Old, 1, 2));
+
+        // With only the old panel shown, the comment is on the old lines of the hunk,
+        // or on its new lines when it has no old ones.
+        let old_panel_target = |old_content: &str, new_content: &str| {
+            let mut state = state_with_file(old_content, new_content);
+            state.diff_fullscreen = DiffFullscreen::OldOnly;
+            target_at_cursor(&mut state).expect("target").1
+        };
+        assert_eq!(
+            old_panel_target("keep\nkeep\na\nb\nc\nd\nend\n", "keep\nkeep\nA\nB\nend\n"),
+            lines(DiffPanelFocus::Old, 3, 6)
+        );
+        assert_eq!(
+            old_panel_target("keep\nend\n", "keep\nnew 1\nnew 2\nend\n"),
+            lines(DiffPanelFocus::New, 2, 3)
+        );
     }
 
     #[test]
