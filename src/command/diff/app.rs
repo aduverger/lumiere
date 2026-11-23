@@ -462,26 +462,25 @@ fn send_queued(
 }
 
 /// The list of agent panes to choose from, as of the last search, with the attached
-/// pane selected. The first item is "none".
-fn agent_picker(agent: &AgentLink) -> (Modal, Picker) {
-    let panes = agent.known_candidates().to_vec();
+/// pane selected. The first item is "none", then `agent.known_candidates()` in order.
+fn agent_picker(agent: &AgentLink) -> Modal {
+    let panes = agent.known_candidates();
     let attached = panes
         .iter()
         .position(|pane| Some(pane.block.as_str()) == agent.attached_block());
     let mut items = vec!["none".to_string()];
     items.extend(panes.iter().map(AgentPane::picker_label));
-    let modal = Modal::select(
+    Modal::select(
         "Agent that answers comments",
         items,
         attached.map_or(0, |index| index + 1),
-    );
-    (modal, Picker::Agent(panes))
+    )
 }
 
 /// What the open selection list is for.
 enum Picker {
     Repository,
-    Agent(Vec<AgentPane>),
+    Agent,
     Quit,
 }
 
@@ -922,11 +921,9 @@ fn run_app_internal<'a>(
 
         if agent_picker_is_stale {
             agent_picker_is_stale = false;
-            if matches!(open_picker, Some(Picker::Agent(_))) {
+            if matches!(open_picker, Some(Picker::Agent)) {
                 agent.find_candidates(&review_roots);
-                let (modal, picker) = agent_picker(&agent);
-                active_modal = Some(modal);
-                open_picker = Some(picker);
+                active_modal = Some(agent_picker(&agent));
             }
         }
 
@@ -1198,10 +1195,10 @@ fn run_app_internal<'a>(
                                             }
                                         }
                                         // The first item is "none".
-                                        Some(Picker::Agent(mut panes)) => {
-                                            let pane = (selected_index > 0
-                                                && selected_index <= panes.len())
-                                            .then(|| panes.remove(selected_index - 1));
+                                        Some(Picker::Agent) => {
+                                            let pane = selected_index.checked_sub(1).and_then(
+                                                |index| agent.known_candidates().get(index).cloned(),
+                                            );
                                             agent.set_pane(pane);
                                         }
                                         Some(Picker::Quit) => match selected_index {
@@ -2191,9 +2188,8 @@ fn run_app_internal<'a>(
                             }
                         }
                         KeyCode::Char('A') => {
-                            let (modal, picker) = agent_picker(&agent);
-                            active_modal = Some(modal);
-                            open_picker = Some(picker);
+                            active_modal = Some(agent_picker(&agent));
+                            open_picker = Some(Picker::Agent);
                             agent_picker_is_stale = true;
                         }
                         KeyCode::Char('s') => {
