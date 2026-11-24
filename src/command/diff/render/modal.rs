@@ -101,6 +101,19 @@ pub enum ModalResult {
     AnnotationExport(String),
 }
 
+/// The space between a key and its description in the help.
+const KEYBINDINGS_GAP: &str = "   ";
+
+/// The width of the key column in the help: that of the longest key.
+fn keybindings_key_width(sections: &[KeyBindSection]) -> usize {
+    sections
+        .iter()
+        .flat_map(|section| section.bindings.iter())
+        .map(|bind| bind.key.len())
+        .max()
+        .unwrap_or(0)
+}
+
 impl Modal {
     pub fn info(title: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
@@ -217,7 +230,16 @@ impl Modal {
                 (width, height)
             }
             ModalContent::KeyBindings { sections, .. } => {
-                let width = 60.min(area.width.saturating_sub(4));
+                // Wide enough for the longest row, with the borders and the scrollbar.
+                let widest_row = sections
+                    .iter()
+                    .flat_map(|section| section.bindings.iter())
+                    .map(|bind| bind.description.chars().count())
+                    .max()
+                    .unwrap_or(0)
+                    + keybindings_key_width(sections)
+                    + KEYBINDINGS_GAP.len();
+                let width = (widest_row as u16 + 4).min(area.width.saturating_sub(4));
                 let total_lines: usize = sections
                     .iter()
                     .map(|s| s.bindings.len() + 2) // +2 for section title and spacing
@@ -528,12 +550,7 @@ impl Modal {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        let key_width = sections
-            .iter()
-            .flat_map(|s| s.bindings.iter())
-            .map(|b| b.key.len())
-            .max()
-            .unwrap_or(0);
+        let key_width = keybindings_key_width(sections);
 
         let mut lines: Vec<Line> = Vec::new();
         for (i, section) in sections.iter().enumerate() {
@@ -551,7 +568,7 @@ impl Modal {
                         format!("{:>width$}", bind.key, width = key_width),
                         Style::default().fg(t.ui.status_added),
                     ),
-                    Span::styled("   ", Style::default()),
+                    Span::styled(KEYBINDINGS_GAP, Style::default()),
                     Span::styled(bind.description, Style::default().fg(t.ui.text_primary)),
                 ]));
             }
