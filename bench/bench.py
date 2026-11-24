@@ -21,6 +21,8 @@ from pathlib import Path
 
 ROWS, COLUMNS = 40, 140
 WAIT_LIMIT = 60.0
+# Long enough for a tool to finish what it does after its first screen.
+SETTLING_TIME = 1.0
 RESULTS = Path(__file__).resolve().parent / "results"
 
 # What the harness needs to know about a tool. `keys` are the bytes a terminal sends.
@@ -278,9 +280,14 @@ def measure_once(tool, repositories, state_folder):
                 label = f"start, {name} repository" + (", watch" if watch else "")
                 values[label] = run.seconds_until(shows(marker)) * 1000
                 if name == "many" and not watch:
+                    # Pressed at once: includes what the tool still does after its first screen.
                     pressed = run.press(keys["next_file"])
-                    values["next file"] = run.seconds_until(shows("after_file001"), pressed) * 1000
+                    values["first key answered"] = run.seconds_until(shows("after_file001"), pressed) * 1000
+                    run.idle(SETTLING_TIME)
+                    pressed = run.press(keys["next_file"])
+                    values["next file"] = run.seconds_until(shows("after_file002"), pressed) * 1000
                 if name == "large" and not watch:
+                    run.idle(SETTLING_TIME)
                     pressed = run.press(keys["next_file"])
                     values["open the large file"] = run.seconds_until(shows("after_z_large"), pressed) * 1000
                     folded = tool["folded_text"]

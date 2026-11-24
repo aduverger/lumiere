@@ -35,6 +35,17 @@ pub fn highlight_color(index: usize) -> Color {
     }
 }
 
+/// Above this size, parsing a whole file takes long enough to be felt: about
+/// 0.15 s per megabyte and per side.
+const WHOLE_FILE_PARSE_LIMIT: usize = 1024 * 1024;
+
+/// Whether a file with these two sides is too large to be parsed as a whole. Its
+/// lines are then coloured one by one, which is instant but approximate: a string or
+/// comment spanning several lines is not seen as one. Function lines are not pinned.
+pub fn too_large_to_parse(old_content: &str, new_content: &str) -> bool {
+    old_content.len().max(new_content.len()) > WHOLE_FILE_PARSE_LIMIT
+}
+
 fn get_config_for_file(filename: &str) -> Option<&'static LanguageConfig> {
     let ext = Path::new(filename).extension().and_then(|e| e.to_str())?;
     config_for_extension(ext)

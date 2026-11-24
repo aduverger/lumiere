@@ -417,6 +417,8 @@ fn save_comment(state: &mut AppState, editor: &AnnotationEditor) -> Option<(Stri
     }
 }
 
+const LARGE_FILE_NOTICE: &str = "large file: colours are approximate";
+
 /// Whether an arrow or `j`/`k` key press asks for another file instead of scrolling:
 /// with option held, or with ctrl held on a letter.
 fn changes_file(key: &crossterm::event::KeyEvent) -> bool {
@@ -686,6 +688,8 @@ fn run_app_internal<'a>(
     let mut agent_picker_is_stale = false;
     // A short message about the last action, shown in the footer for a few seconds.
     let mut notice: Option<(String, Instant)> = None;
+    // The file the large-file notice was last decided for.
+    let mut noticed_file: Option<String> = None;
 
     'main: loop {
         state.reload_threads_if_changed();
@@ -752,6 +756,13 @@ fn run_app_internal<'a>(
                 }
             })?;
         } else {
+            let filename = &state.file_diffs[state.current_file].filename;
+            if noticed_file.as_deref() != Some(filename.as_str()) {
+                noticed_file = Some(filename.clone());
+                if state.current_file_is_too_large_to_parse() {
+                    notice = Some((LARGE_FILE_NOTICE.to_string(), Instant::now()));
+                }
+            }
             // Use cached side_by_side (avoids recomputing diff every frame during drag etc.)
             state.update_search_matches();
             // Ensure highlighters are cached (only recomputed when file changes)

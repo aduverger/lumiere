@@ -30,7 +30,8 @@ show the median.
 | Metric | From | Until |
 |---|---|---|
 | start | launch | the first file is on screen |
-| next file | the key press | the second file is on screen |
+| first key answered | a key pressed as soon as the first file is on screen | the second file is on screen |
+| next file | the key press, one second later | the third file is on screen |
 | open the large file | the key press | the large file is on screen |
 | large file, whole file view | `z` | no folded line is left on screen |
 | file change to screen, watch | a file is written | its new text is on screen |
