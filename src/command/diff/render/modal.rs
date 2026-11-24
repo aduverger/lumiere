@@ -1973,3 +1973,34 @@ fn calculate_keybindings_visible_height(terminal_height: u16, content_height: u1
     // Subtract 2 for top/bottom borders
     modal_height.saturating_sub(2)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    fn drawn(modal: &Modal, columns: u16, rows: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(columns, rows)).expect("terminal");
+        terminal.draw(|frame| modal.render(frame)).expect("draw");
+        let buffer = terminal.backend().buffer();
+        let cells = buffer.content.iter().map(|cell| cell.symbol());
+        cells.collect::<Vec<_>>().join("")
+    }
+
+    #[test]
+    fn test_the_help_shows_its_longest_row_in_full_when_the_terminal_has_room() {
+        // Longer than the 60 columns the help was once limited to.
+        let description = "Comment on the selection, the hunk or the file, or reply to a thread";
+        let sections = vec![KeyBindSection {
+            title: "Threads",
+            bindings: vec![
+                KeyBind { key: "opt+down/k, opt+up/j", description },
+                KeyBind { key: "q", description: "Quit" },
+            ],
+        }];
+        let help = Modal::keybindings("Keybindings", sections);
+
+        assert!(drawn(&help, 120, 20).contains(description));
+    }
+}
