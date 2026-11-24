@@ -43,7 +43,6 @@ use super::diff_algo::{hunk_comment_lines, hunk_lines_on};
 use super::git::{
     get_current_branch, load_file_diffs, load_pr_file_diffs, load_single_commit_diffs,
 };
-use super::highlight;
 use super::render::{
     render_diff, render_empty_state, truncate_path, FilePickerItem, KeyBind, KeyBindSection, Modal,
     ModalContent, ModalFileStatus, ModalResult, ReviewStatus,
@@ -597,7 +596,6 @@ fn run_app_internal<'a>(
     mut workspace_session: Option<WorkspaceSession<'a>>,
 ) -> io::Result<()> {
     theme::init(options.theme.as_deref());
-    highlight::init();
 
     // Initialize state before TUI so we can sync viewed files
     let mut state = new_review_state(&options, file_diffs, backend, options.focus.as_deref());

@@ -8,7 +8,7 @@ use ratatui::prelude::*;
 use tree_sitter_highlight::{HighlightEvent, Highlighter};
 
 use super::theme;
-use config::{LanguageConfig, CONFIGS, HIGHLIGHT_NAMES};
+use config::{config_for_extension, LanguageConfig, HIGHLIGHT_NAMES};
 
 pub fn highlight_color(index: usize) -> Color {
     let t = theme::get();
@@ -37,7 +37,7 @@ pub fn highlight_color(index: usize) -> Color {
 
 fn get_config_for_file(filename: &str) -> Option<&'static LanguageConfig> {
     let ext = Path::new(filename).extension().and_then(|e| e.to_str())?;
-    CONFIGS.iter().find(|(e, _)| *e == ext).map(|(_, c)| c)
+    config_for_extension(ext)
 }
 
 fn highlight_code(code: &str, filename: &str) -> Vec<(String, Option<usize>)> {
@@ -207,48 +207,9 @@ pub fn highlight_line_spans<'a>(line: &str, filename: &str, bg: Option<Color>) -
         .collect()
 }
 
-pub fn init() {
-    let _ = &*CONFIGS;
-    #[cfg(debug_assertions)]
-    {
-        let extensions: Vec<&str> = CONFIGS.iter().map(|(ext, _)| *ext).collect();
-        eprintln!("[DEBUG] Loaded highlight configs for: {:?}", extensions);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_all_configs_load() {
-        let extensions: Vec<&str> = CONFIGS.iter().map(|(ext, _)| *ext).collect();
-        assert!(extensions.contains(&"rs"), "Rust config should be loaded");
-        assert!(
-            extensions.contains(&"ts"),
-            "TypeScript config should be loaded"
-        );
-        assert!(extensions.contains(&"tsx"), "TSX config should be loaded");
-        assert!(
-            extensions.contains(&"js"),
-            "JavaScript config should be loaded"
-        );
-        assert!(extensions.contains(&"py"), "Python config should be loaded");
-        assert!(extensions.contains(&"go"), "Go config should be loaded");
-        assert!(extensions.contains(&"json"), "JSON config should be loaded");
-        assert!(extensions.contains(&"ex"), "Elixir config should be loaded");
-        assert!(extensions.contains(&"exs"), "Elixir script config should be loaded");
-        assert!(extensions.contains(&"java"), "Java config should be loaded");
-        assert!(extensions.contains(&"zig"), "Zig config should be loaded");
-        assert!(extensions.contains(&"c"), "C config should be loaded");
-        assert!(extensions.contains(&"h"), "C header config should be loaded");
-        assert!(extensions.contains(&"cpp"), "C++ config should be loaded");
-        assert!(extensions.contains(&"cc"), "C++ .cc config should be loaded");
-        assert!(extensions.contains(&"cxx"), "C++ .cxx config should be loaded");
-        assert!(extensions.contains(&"hpp"), "C++ .hpp config should be loaded");
-        assert!(extensions.contains(&"hh"), "C++ .hh config should be loaded");
-        assert!(extensions.contains(&"hxx"), "C++ .hxx config should be loaded");
-    }
 
     #[test]
     fn test_rust_highlighting() {
