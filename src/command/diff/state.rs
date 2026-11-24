@@ -395,7 +395,7 @@ impl AppState {
 
     fn parse_syntax_trees(&mut self) {
         let diff = &self.file_diffs[self.current_file];
-        if too_large_to_parse(&diff.old_content, &diff.new_content) {
+        if self.current_file_is_too_large_to_parse() {
             // Trees parsed before the file grew would pin lines that moved since.
             self.cached_trees.old_file_trees.remove(&diff.filename);
             self.cached_trees.new_file_trees.remove(&diff.filename);
@@ -476,7 +476,7 @@ impl AppState {
         };
         if needs_recompute {
             let diff = &self.file_diffs[current];
-            let (old_hl, new_hl) = if too_large_to_parse(&diff.old_content, &diff.new_content) {
+            let (old_hl, new_hl) = if self.current_file_is_too_large_to_parse() {
                 (FileHighlighter::default(), FileHighlighter::default())
             } else {
                 (

@@ -360,18 +360,17 @@ impl<'r> AgentLink<'r> {
         current_session: Option<&str>,
         review_roots: &[PathBuf],
     ) {
-        let rex = self.rex;
         let candidates = match (agent_block, current_session) {
             (Some(block), Some(session)) => {
                 let current_session = RexSession {
                     id: session.to_string(),
                     label: String::new(),
                 };
-                let pane = rex.terminal_pane(session, block);
+                let pane = self.rex.terminal_pane(session, block);
                 pane.and_then(|pane| agent_pane(&current_session, pane)).into_iter().collect()
             }
             (Some(_), None) => Vec::new(),
-            (None, _) => find_agent_panes(rex, review_roots),
+            (None, _) => find_agent_panes(self.rex, review_roots),
         };
         self.pane = candidates.first().cloned();
         self.candidates = candidates;

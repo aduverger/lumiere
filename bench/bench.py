@@ -2,6 +2,7 @@
 """Measures how fast a terminal diff viewer starts and reacts. See README.md."""
 
 import argparse
+import codecs
 import fcntl
 import json
 import os
@@ -23,6 +24,10 @@ ROWS, COLUMNS = 40, 140
 WAIT_LIMIT = 60.0
 # Long enough for a tool to finish what it does after its first screen.
 SETTLING_TIME = 1.0
+# A control sequence, a title-like sequence, a character set choice, or any other escape.
+ESCAPE_SEQUENCE = re.compile(
+    r"\x1b(?:\[([?>=<]?)([0-9;:]*)([ -/]*[@-~])|\]([^\x07\x1b]*)(?:\x07|\x1b\\)|[()][0-9A-B]|[^\[\]()])"
+)
 RESULTS = Path(__file__).resolve().parent / "results"
 
 # What the harness needs to know about a tool. `keys` are the bytes a terminal sends.
@@ -116,9 +121,7 @@ class Screen:
                 self.put(character)
                 position += 1
                 continue
-            match = re.compile(
-                r"\x1b(?:\[([?>=<]?)([0-9;:]*)([ -/]*[@-~])|\]([^\x07\x1b]*)(?:\x07|\x1b\\)|[()][0-9A-B]|[^\[\]()])"
-            ).match(data, position)
+            match = ESCAPE_SEQUENCE.match(data, position)
             if not match:
                 break  # an escape sequence cut in two: wait for the rest
             if match.group(3):
@@ -188,7 +191,8 @@ class Session:
 
     def __init__(self, command, folder, state_folder):
         self.screen = Screen()
-        self.undecoded = b""
+        # Keeps the bytes of a character cut in two for the next read.
+        self.decoder = codecs.getincrementaldecoder("utf-8")(errors="ignore")
         environment = {**os.environ, "TERM": "xterm-256color", "COLORTERM": "truecolor"}
         environment["XDG_STATE_HOME"] = str(state_folder)
         self.started = time.monotonic()
@@ -203,13 +207,10 @@ class Session:
         if not readable:
             return
         try:
-            data = self.undecoded + os.read(self.terminal, 1 << 16)
+            data = os.read(self.terminal, 1 << 16)
         except OSError:
             return
-        text = data.decode("utf-8", errors="ignore")
-        # Bytes of a character cut in two are kept for the next read.
-        self.undecoded = data[len(text.encode("utf-8")) :] if len(data) - len(text.encode("utf-8")) < 4 else b""
-        answers = self.screen.feed(text)
+        answers = self.screen.feed(self.decoder.decode(data))
         if answers:
             os.write(self.terminal, answers)
 
