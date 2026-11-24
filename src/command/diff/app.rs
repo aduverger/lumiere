@@ -679,13 +679,8 @@ fn run_app_internal<'a>(
     review_roots.extend(launch_dir);
     let rex = RexCli;
     let rex_session = std::env::var("REX_SESSION").ok();
-    let mut agent = AgentLink::attach(
-        &rex,
-        options.agent_block.as_deref(),
-        rex_session.as_deref(),
-        &review_roots,
-        review_path,
-    );
+    // Finding the agent takes a few calls to Rex: it is done once the review is on screen.
+    let mut agent = AgentLink::new(&rex, review_path);
     let mut agent_refreshed_at = Instant::now();
     // The agent list was opened from the last search: search again once it is drawn.
     let mut agent_picker_is_stale = false;
@@ -929,6 +924,12 @@ fn run_app_internal<'a>(
             state.annotation_overlay_gaps = gaps_cell.into_inner();
             state.annotation_rects = rects_cell.into_inner();
             state.editor_rect = editor_rect_cell.get();
+        }
+
+        if !agent.has_searched() {
+            agent.attach(options.agent_block.as_deref(), rex_session.as_deref(), &review_roots);
+            agent_refreshed_at = Instant::now();
+            continue 'main;
         }
 
         if agent_picker_is_stale {

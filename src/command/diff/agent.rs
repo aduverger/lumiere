@@ -332,18 +332,35 @@ pub struct AgentLink<'r> {
     candidates: Vec<AgentPane>,
     /// The repository or workspace folder under review, named in every message.
     review_path: PathBuf,
+    /// Whether agent panes were searched for at least once.
+    searched: bool,
 }
 
 impl<'r> AgentLink<'r> {
+    /// A link to no agent yet: nothing is asked of Rex until `attach`.
+    pub fn new(rex: &'r dyn Rex, review_path: PathBuf) -> Self {
+        Self {
+            rex,
+            pane: None,
+            candidates: Vec::new(),
+            review_path,
+            searched: false,
+        }
+    }
+
+    pub fn has_searched(&self) -> bool {
+        self.searched
+    }
+
     /// Attaches to `agent_block` in the current Rex session when given, otherwise to
     /// the most recently active agent pane in or under one of `review_roots`.
     pub fn attach(
-        rex: &'r dyn Rex,
+        &mut self,
         agent_block: Option<&str>,
         current_session: Option<&str>,
         review_roots: &[PathBuf],
-        review_path: PathBuf,
-    ) -> Self {
+    ) {
+        let rex = self.rex;
         let candidates = match (agent_block, current_session) {
             (Some(block), Some(session)) => {
                 let current_session = RexSession {
@@ -356,12 +373,9 @@ impl<'r> AgentLink<'r> {
             (Some(_), None) => Vec::new(),
             (None, _) => find_agent_panes(rex, review_roots),
         };
-        Self {
-            rex,
-            pane: candidates.first().cloned(),
-            candidates,
-            review_path,
-        }
+        self.pane = candidates.first().cloned();
+        self.candidates = candidates;
+        self.searched = true;
     }
 
     pub fn is_attached(&self) -> bool {
@@ -380,6 +394,7 @@ impl<'r> AgentLink<'r> {
     /// Searches for agent panes again.
     pub fn find_candidates(&mut self, review_roots: &[PathBuf]) -> &[AgentPane] {
         self.candidates = find_agent_panes(self.rex, review_roots);
+        self.searched = true;
         &self.candidates
     }
 
@@ -392,6 +407,7 @@ impl<'r> AgentLink<'r> {
         match &self.pane {
             Some(pane) if pane.status.state.is_empty() => pane.status.app.clone(),
             Some(pane) => format!("{} {}", pane.status.app, pane.status.state),
+            None if !self.searched => "finding agent".to_string(),
             None => "no agent".to_string(),
         }
     }
@@ -529,7 +545,9 @@ mod tests {
     }
 
     fn attach<'r>(rex: &'r FakeRex, agent_block: Option<&str>) -> AgentLink<'r> {
-        AgentLink::attach(rex, agent_block, Some("s1"), &roots(), PathBuf::from("/work"))
+        let mut link = AgentLink::new(rex, PathBuf::from("/work"));
+        link.attach(agent_block, Some("s1"), &roots());
+        link
     }
 
     fn blocks(panes: &[AgentPane]) -> Vec<&str> {
@@ -569,6 +587,27 @@ mod tests {
         let rex = FakeRex::with(vec![back_at_the_shell]);
 
         assert!(!attach(&rex, None).is_attached());
+    }
+
+    #[test]
+    fn test_no_agent_is_looked_for_until_the_link_is_attached() {
+        let rex = FakeRex::with(vec![pane("s1", "first", "pi", "/work", "2026-11-18T10:00:00Z")]);
+        let mut link = AgentLink::new(&rex, PathBuf::from("/work"));
+
+        assert!(!link.has_searched());
+        assert_eq!(link.attached_block(), None);
+        assert_eq!(link.label(), "finding agent");
+
+        link.attach(None, Some("s1"), &roots());
+        assert!(link.has_searched());
+        assert_eq!(link.label(), "pi idle");
+    }
+
+    #[test]
+    fn test_a_search_that_finds_nothing_says_there_is_no_agent() {
+        let rex = FakeRex::with(Vec::new());
+
+        assert_eq!(attach(&rex, None).label(), "no agent");
     }
 
     #[test]
