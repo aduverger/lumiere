@@ -54,8 +54,10 @@ impl WatchedTree {
 /// Watch the working tree at `root`. Reported paths are relative to `root`,
 /// matching `FileDiff::filename` (e.g. "src/foo.rs").
 ///
-/// In a Git repository, folders Git ignores are left out. Of Git's own folder only
-/// the top is watched, where a commit, a checkout, staging and a fetch write a file.
+/// On Linux, where every folder is registered on its own, the folders Git ignores
+/// are left out of a Git repository. Of Git's own folder only the top is watched,
+/// where a commit, a checkout, staging and a fetch write a file. Elsewhere one
+/// registration covers the whole tree, and registering folders one by one is slower.
 pub fn setup_watcher(root: &Path) -> Option<(WatchHandle, Receiver<WatchEvent>)> {
     let (changed_path_tx, changed_path_rx) = mpsc::channel::<PathBuf>();
     let mut watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
@@ -72,7 +74,8 @@ pub fn setup_watcher(root: &Path) -> Option<(WatchHandle, Receiver<WatchEvent>)>
         }
     })
     .ok()?;
-    let tree = Repository::open(root).ok().map(|repository| WatchedTree {
+    let repository = cfg!(target_os = "linux").then(|| Repository::open(root).ok()).flatten();
+    let tree = repository.map(|repository| WatchedTree {
         root: root.to_path_buf(),
         repository,
     });
@@ -162,6 +165,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_changes_in_a_folder_git_ignores_are_not_reported() {
         let (_root, root_path) = repository_with_an_ignored_folder();
         let (_handle, events) = setup_watcher(&root_path).expect("watcher");
@@ -190,6 +194,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_what_git_writes_on_a_commit_or_checkout_is_reported() {
         let (_root, root_path) = repository_with_an_ignored_folder();
         let (_handle, events) = setup_watcher(&root_path).expect("watcher");

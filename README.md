@@ -80,7 +80,8 @@ after `A` has moved on.
 
 `lumiere diff` works from any directory of a repository.
 
-- `--watch` does not watch the folders Git ignores, such as `node_modules` or `.venv`.
+- On Linux, `--watch` does not watch the folders Git ignores, such as `node_modules` or
+  `.venv`.
 - A file over 1 MB is coloured line by line, so a string or comment spanning several
   lines may get the wrong colour, and the enclosing function is not pinned at the top.
 
