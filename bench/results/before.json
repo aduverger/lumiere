@@ -1,0 +1,124 @@
+{
+  "label": "before",
+  "tool": "lumiere",
+  "command": [
+    "/home/ubuntu/.cargo/bin/lumiere",
+    "diff"
+  ],
+  "date": "2026-11-24 19:56",
+  "processors": 2,
+  "metrics": {
+    "start, small repository": [
+      718.5,
+      715.0,
+      2073.6,
+      777.1,
+      965.8
+    ],
+    "start, small repository, watch": [
+      738.3,
+      829.6,
+      1989.4,
+      854.6,
+      907.3
+    ],
+    "file change to screen, watch": [
+      512.0,
+      528.5,
+      514.8,
+      508.0,
+      520.8
+    ],
+    "idle processor use, watch": [
+      0.5,
+      0.8,
+      0.5,
+      0.5,
+      0.5
+    ],
+    "peak memory, small repository": [
+      40.4,
+      40.4,
+      40.4,
+      40.4,
+      40.4
+    ],
+    "start, many repository": [
+      752.4,
+      2514.2,
+      1890.4,
+      828.7,
+      946.4
+    ],
+    "first key answered": [
+      6.1,
+      32.0,
+      10.8,
+      2.5,
+      6.7
+    ],
+    "next file": [
+      5.1,
+      21.9,
+      10.9,
+      4.5,
+      6.4
+    ],
+    "start, many repository, watch": [
+      732.1,
+      2675.6,
+      1715.8,
+      1017.6,
+      931.8
+    ],
+    "start, large repository": [
+      896.5,
+      2687.2,
+      1306.3,
+      1036.7,
+      1194.3
+    ],
+    "open the large file": [
+      5365.2,
+      15492.0,
+      6134.1,
+      6224.1,
+      6579.8
+    ],
+    "large file, whole file view": [
+      164.2,
+      751.8,
+      171.7,
+      176.3,
+      238.6
+    ],
+    "peak memory, large file": [
+      1052.1,
+      1052.2,
+      1052.2,
+      1052.1,
+      1052.2
+    ],
+    "start, large repository, watch": [
+      912.9,
+      3096.5,
+      921.7,
+      1699.5,
+      1004.5
+    ],
+    "start, ignored repository": [
+      711.2,
+      870.1,
+      849.3,
+      1681.1,
+      908.0
+    ],
+    "start, ignored repository, watch": [
+      871.1,
+      1678.0,
+      1017.0,
+      1065.0,
+      1026.5
+    ]
+  }
+}

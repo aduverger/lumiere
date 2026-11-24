@@ -1,0 +1,124 @@
+{
+  "label": "after",
+  "tool": "lumiere",
+  "command": [
+    "/home/ubuntu/code/aduverger/lumiere/target/release/lumiere",
+    "diff"
+  ],
+  "date": "2026-11-24 19:57",
+  "processors": 2,
+  "metrics": {
+    "start, small repository": [
+      45.8,
+      55.7,
+      43.6,
+      45.6,
+      43.3
+    ],
+    "start, small repository, watch": [
+      63.6,
+      88.0,
+      50.8,
+      43.7,
+      45.7
+    ],
+    "file change to screen, watch": [
+      522.3,
+      509.3,
+      508.0,
+      555.9,
+      553.3
+    ],
+    "idle processor use, watch": [
+      0.5,
+      0.5,
+      0.8,
+      0.5,
+      0.5
+    ],
+    "peak memory, small repository": [
+      26.4,
+      26.3,
+      26.4,
+      26.4,
+      26.4
+    ],
+    "start, many repository": [
+      69.9,
+      79.5,
+      108.0,
+      222.9,
+      69.2
+    ],
+    "first key answered": [
+      163.0,
+      199.8,
+      268.9,
+      330.6,
+      179.0
+    ],
+    "next file": [
+      10.1,
+      4.7,
+      6.8,
+      4.4,
+      4.6
+    ],
+    "start, many repository, watch": [
+      92.7,
+      73.5,
+      74.1,
+      71.3,
+      76.0
+    ],
+    "start, large repository": [
+      231.4,
+      230.6,
+      303.6,
+      227.8,
+      247.0
+    ],
+    "open the large file": [
+      255.6,
+      237.4,
+      224.5,
+      258.7,
+      250.4
+    ],
+    "large file, whole file view": [
+      212.5,
+      237.5,
+      240.9,
+      191.4,
+      281.7
+    ],
+    "peak memory, large file": [
+      142.8,
+      142.8,
+      142.8,
+      142.8,
+      142.8
+    ],
+    "start, large repository, watch": [
+      242.1,
+      312.6,
+      231.8,
+      242.5,
+      304.4
+    ],
+    "start, ignored repository": [
+      43.8,
+      47.8,
+      46.5,
+      43.2,
+      48.8
+    ],
+    "start, ignored repository, watch": [
+      43.9,
+      44.5,
+      49.3,
+      43.8,
+      54.1
+    ]
+  }
+}
