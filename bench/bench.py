@@ -268,15 +268,11 @@ def measure_once(tool, repositories, state_folder):
     """One pass over every metric: {metric name: value}."""
     keys = tool["keys"]
     values = {}
-
-    def session(name, watch=False):
-        command = tool["command"] + (tool["watch"] if watch else [])
-        return Session(command, repositories / name, state_folder)
-
     first_file = {"small": "after_file0", "many": "after_file000", "large": "after_a_small", "ignored": "after_file0"}
     for name, marker in first_file.items():
         for watch in (False, True):
-            run = session(name, watch)
+            command = tool["command"] + (tool["watch"] if watch else [])
+            run = Session(command, repositories / name, state_folder)
             try:
                 label = f"start, {name} repository" + (", watch" if watch else "")
                 values[label] = run.seconds_until(shows(marker)) * 1000
