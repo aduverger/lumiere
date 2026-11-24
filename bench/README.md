@@ -22,7 +22,7 @@ show the median.
 |---|---|
 | `small` | 3 changed files |
 | `many` | 300 changed files |
-| `large` | 1 small changed file and 1 changed file of about 9 MB |
+| `large` | 1 small changed file and 1 changed file of about 5 MB |
 | `ignored` | 3 changed files next to 8,000 folders that Git ignores |
 
 ## Metrics
