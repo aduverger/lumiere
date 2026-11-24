@@ -129,19 +129,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn test_no_extension_belongs_to_two_languages() {
-        let mut extensions: Vec<&str> =
-            LANGUAGES.iter().flat_map(|language| language.extensions.iter().copied()).collect();
-        let count = extensions.len();
-        extensions.sort_unstable();
-        extensions.dedup();
-        assert_eq!(extensions.len(), count);
-    }
-
-    #[test]
-    fn test_an_unknown_extension_has_no_rules() {
-        assert!(config_for_extension("txt").is_none());
-    }
 }

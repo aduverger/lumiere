@@ -589,7 +589,7 @@ mod tests {
     }
 
     #[test]
-    fn test_no_agent_is_looked_for_until_the_link_is_attached() {
+    fn test_the_label_says_finding_agent_until_the_search_then_what_it_found() {
         let rex = FakeRex::with(vec![pane("s1", "first", "pi", "/work", "2026-11-18T10:00:00Z")]);
         let mut link = AgentLink::new(&rex, PathBuf::from("/work"));
 
@@ -600,13 +600,9 @@ mod tests {
         link.attach(None, Some("s1"), &roots());
         assert!(link.has_searched());
         assert_eq!(link.label(), "pi idle");
-    }
 
-    #[test]
-    fn test_a_search_that_finds_nothing_says_there_is_no_agent() {
-        let rex = FakeRex::with(Vec::new());
-
-        assert_eq!(attach(&rex, None).label(), "no agent");
+        let rex_without_agent = FakeRex::with(Vec::new());
+        assert_eq!(attach(&rex_without_agent, None).label(), "no agent");
     }
 
     #[test]
