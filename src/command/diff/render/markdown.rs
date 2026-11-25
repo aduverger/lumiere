@@ -2,7 +2,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use ratatui::prelude::*;
 
 use crate::command::diff::highlight::highlight_code_lines;
-use crate::command::diff::render::diff_view::expand_tabs_in_spans;
+use crate::command::diff::render::diff_view::{chars_to_spans, expand_tabs_in_spans};
 use crate::command::diff::theme;
 
 enum Container {
@@ -50,7 +50,6 @@ pub fn render_markdown(
         code_block: None,
         link_stack: Vec::new(),
         last_block_end: None,
-        has_emitted_row: false,
     };
 
     for (event, range) in parser {
@@ -73,26 +72,28 @@ struct MarkdownRenderer<'a> {
     code_block: Option<CodeBlockBuffer>,
     link_stack: Vec<LinkState>,
     last_block_end: Option<usize>,
-    has_emitted_row: bool,
 }
 
 impl<'a> MarkdownRenderer<'a> {
     fn current_style(&self) -> Style {
-        let mut style = Style::default();
-        for layer in &self.style_stack {
-            style = style.patch(*layer);
-        }
-        style
+        self.style_stack
+            .iter()
+            .fold(Style::default(), |acc, layer| acc.patch(*layer))
     }
 
     fn muted_style(&self) -> Style {
         Style::default().fg(self.theme.ui.text_muted)
     }
 
+    fn start_block(&mut self, start: usize) {
+        self.flush_inline();
+        self.maybe_emit_blank_line(start);
+    }
+
     /// Emits a blank separator row when the source left at least one blank line
     /// between the previous finished block and the block starting at `start`.
     fn maybe_emit_blank_line(&mut self, start: usize) {
-        if !self.has_emitted_row {
+        if self.rows.is_empty() {
             return;
         }
         let Some(prev_end) = self.last_block_end else {
@@ -170,7 +171,6 @@ impl<'a> MarkdownRenderer<'a> {
             self.tab_width,
         );
         self.rows.extend(wrapped);
-        self.has_emitted_row = true;
     }
 
     fn handle_event(&mut self, event: Event<'_>, range: std::ops::Range<usize>) {
@@ -219,14 +219,12 @@ impl<'a> MarkdownRenderer<'a> {
                 if self.inline_spans.is_empty() {
                     let (first_prefix, _) = self.take_prefixes();
                     self.rows.push(truncate_spans(&first_prefix, self.width));
-                    self.has_emitted_row = true;
                 } else {
                     self.flush_inline();
                 }
             }
             Event::Rule => {
-                self.flush_inline();
-                self.maybe_emit_blank_line(range.start);
+                self.start_block(range.start);
                 let (prefix, _) = self.take_prefixes();
                 let prefix = truncate_spans(&prefix, self.width.saturating_sub(1));
                 let rule_width = self.width.saturating_sub(spans_width(&prefix));
@@ -236,7 +234,6 @@ impl<'a> MarkdownRenderer<'a> {
                     Style::default().fg(self.theme.ui.border_unfocused),
                 ));
                 self.rows.push(row);
-                self.has_emitted_row = true;
                 self.last_block_end = Some(range.end);
             }
             Event::TaskListMarker(checked) => {
@@ -256,26 +253,20 @@ impl<'a> MarkdownRenderer<'a> {
 
     fn handle_start(&mut self, tag: Tag<'_>, start: usize) {
         match tag {
-            Tag::Paragraph => {
-                self.flush_inline();
-                self.maybe_emit_blank_line(start);
-            }
+            Tag::Paragraph => self.start_block(start),
             Tag::Heading { .. } => {
-                self.flush_inline();
-                self.maybe_emit_blank_line(start);
+                self.start_block(start);
                 self.style_stack
                     .push(Style::default().fg(self.theme.ui.border_focused).bold());
             }
             Tag::BlockQuote(_) => {
-                self.flush_inline();
-                self.maybe_emit_blank_line(start);
+                self.start_block(start);
                 self.containers.push(Container::BlockQuote);
                 self.style_stack
                     .push(Style::default().fg(self.theme.ui.text_muted).italic());
             }
             Tag::CodeBlock(kind) => {
-                self.flush_inline();
-                self.maybe_emit_blank_line(start);
+                self.start_block(start);
                 let language = match kind {
                     CodeBlockKind::Fenced(info) => {
                         let trimmed = info.trim();
@@ -289,15 +280,13 @@ impl<'a> MarkdownRenderer<'a> {
                 });
             }
             Tag::List(start_number) => {
-                self.flush_inline();
-                self.maybe_emit_blank_line(start);
+                self.start_block(start);
                 self.containers.push(Container::List {
                     next_number: start_number,
                 });
             }
             Tag::Item => {
-                self.flush_inline();
-                self.maybe_emit_blank_line(start);
+                self.start_block(start);
                 let marker = match self
                     .containers
                     .iter_mut()
@@ -403,7 +392,6 @@ impl<'a> MarkdownRenderer<'a> {
                 self.theme,
             );
             self.rows.extend(wrapped);
-            self.has_emitted_row = true;
         }
     }
 }
@@ -458,27 +446,6 @@ fn flatten_styled_chars(spans: Vec<Span<'static>>, tab_width: usize) -> Vec<(cha
         }
     }
     chars
-}
-
-fn chars_to_spans(chars: &[(char, Style)]) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-    let mut iter = chars.iter();
-    let Some(&(first_ch, first_style)) = iter.next() else {
-        return spans;
-    };
-    let mut current_style = first_style;
-    let mut buffer = String::from(first_ch);
-    for &(ch, style) in iter {
-        if style == current_style {
-            buffer.push(ch);
-        } else {
-            spans.push(Span::styled(std::mem::take(&mut buffer), current_style));
-            buffer.push(ch);
-            current_style = style;
-        }
-    }
-    spans.push(Span::styled(buffer, current_style));
-    spans
 }
 
 fn wrap_prose_line(
@@ -549,14 +516,9 @@ fn wrap_prose_line(
             pending_spaces.clear();
             pending_space_width = 0;
         } else if !pending_spaces.is_empty() {
-            if !line_chars.is_empty() || is_first {
-                let avail = if is_first { first_avail } else { cont_avail };
-                if line_width + pending_space_width <= avail {
-                    line_chars.append(&mut pending_spaces);
-                    line_width += pending_space_width;
-                } else {
-                    pending_spaces.clear();
-                }
+            if !line_chars.is_empty() && line_width + pending_space_width <= avail {
+                line_chars.append(&mut pending_spaces);
+                line_width += pending_space_width;
             } else {
                 pending_spaces.clear();
             }
@@ -586,9 +548,6 @@ fn wrap_prose_line(
                 }
                 take = idx + 1;
                 take_width += w;
-                if take_width >= avail {
-                    break;
-                }
             }
             line_chars.extend_from_slice(&remaining[..take]);
             line_width += take_width;
@@ -673,9 +632,6 @@ fn wrap_code_line(
             }
             fit_len = idx + 1;
             fit_width += w;
-            if fit_width >= avail && idx + 1 < slice.len() {
-                break;
-            }
         }
 
         let (take_len, take_width, next_offset) = if start + fit_len >= chars.len() {

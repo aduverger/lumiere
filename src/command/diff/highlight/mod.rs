@@ -276,17 +276,10 @@ pub fn highlight_code_lines(
                         .unwrap_or(default_fg);
                     let style = base_style.fg(fg);
                     let text = &code[start..end];
-                    let mut parts = text.split('\n');
-                    if let Some(first) = parts.next() {
-                        if !first.is_empty() {
-                            lines
-                                .last_mut()
-                                .unwrap()
-                                .push(Span::styled(first.to_string(), style));
+                    for (i, part) in text.split('\n').enumerate() {
+                        if i > 0 {
+                            lines.push(Vec::new());
                         }
-                    }
-                    for part in parts {
-                        lines.push(Vec::new());
                         if !part.is_empty() {
                             lines
                                 .last_mut()

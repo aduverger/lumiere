@@ -353,7 +353,7 @@ fn styled_chars(spans: Vec<Span<'_>>) -> Vec<(char, Style)> {
         .collect()
 }
 
-fn chars_to_spans(chars: &[(char, Style)]) -> Vec<Span<'static>> {
+pub(super) fn chars_to_spans(chars: &[(char, Style)]) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     let mut iter = chars.iter();
     let Some(&(first_ch, first_style)) = iter.next() else {
