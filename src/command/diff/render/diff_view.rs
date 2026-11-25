@@ -2466,3 +2466,34 @@ pub fn render_diff(
     (content_row_offset, overlay_gaps, annotation_rects, editor_rect)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::command::diff::review_thread::Comment;
+
+    #[test]
+    fn test_thread_rows_aligns_box_borders_for_markdown_comments() {
+        let t = theme::get();
+        let mut thread = Thread::new(
+            "src/app.py".to_string(),
+            AnnotationTarget::File,
+            None,
+            Comment::agent(
+                "✅ Use `def foo()` and **bold** text:\n```\ndef foo():\n    return 1\n```"
+                    .to_string(),
+                "pi".to_string(),
+            ),
+        );
+        let width = 36;
+        let rows = thread_rows(&thread, None, width, 4, t);
+        assert!(rows.len() >= 5);
+        for (idx, row) in rows.iter().enumerate() {
+            assert_eq!(row.width(), width, "row {} misaligned", idx);
+        }
+
+        thread.resolved = true;
+        let resolved_rows = thread_rows(&thread, None, width, 4, t);
+        assert_eq!(resolved_rows.len(), 1);
+    }
+}
+

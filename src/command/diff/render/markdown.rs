@@ -691,14 +691,14 @@ mod tests {
 
     #[test]
     fn test_plain_text_wrapping_and_newlines() {
-        let t = theme::Theme::dark();
+        let t = theme::get();
         let rows = render_markdown(
             "Hello world\nSecond line\n\nNew paragraph",
             20,
             t.ui.text_primary,
             "src/a.rs",
             4,
-            &t,
+            t,
         );
         assert_eq!(
             rows_text(&rows),
@@ -712,7 +712,7 @@ mod tests {
             t.ui.text_primary,
             "src/a.rs",
             4,
-            &t,
+            t,
         );
         assert_eq!(rows_text(&tight), vec!["Changes:", "• one", "• two"]);
 
@@ -722,21 +722,21 @@ mod tests {
             t.ui.text_primary,
             "src/a.rs",
             4,
-            &t,
+            t,
         );
         assert_eq!(rows_text(&spaced), vec!["Changes:", "", "• one", "• two"]);
     }
 
     #[test]
     fn test_inline_formatting_and_snake_case_preserved() {
-        let t = theme::Theme::dark();
+        let t = theme::get();
         let rows = render_markdown(
             "Use **bold**, *italic*, ~~old~~, and foo_bar_baz with <thread-id>.",
             100,
             t.ui.text_primary,
             "src/a.py",
             4,
-            &t,
+            t,
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(
@@ -759,14 +759,14 @@ mod tests {
 
     #[test]
     fn test_inline_code_highlighted_with_file_language_and_inherits_bold() {
-        let t = theme::Theme::dark();
+        let t = theme::get();
         let rows = render_markdown(
             "Try `def xxx` and **`return 1`** here.",
             80,
             t.ui.text_primary,
             "src/app.py",
             4,
-            &t,
+            t,
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(row_text(&rows[0]), "Try def xxx and return 1 here.");
@@ -786,9 +786,9 @@ mod tests {
 
     #[test]
     fn test_fenced_code_blocks_use_fence_language_or_file_fallback() {
-        let t = theme::Theme::dark();
+        let t = theme::get();
         let body = "Bare:\n```\ndef foo():\n    return 1\n```\n\nTagged:\n```rust\nfn main() {}\n```";
-        let rows = render_markdown(body, 40, t.ui.text_primary, "src/app.py", 4, &t);
+        let rows = render_markdown(body, 40, t.ui.text_primary, "src/app.py", 4, t);
         assert_width_bound(&rows, 40);
 
         let def_row = rows
@@ -811,15 +811,16 @@ mod tests {
 
     #[test]
     fn test_lists_headings_blockquotes_links_and_rules() {
-        let t = theme::Theme::dark();
+        let t = theme::get();
         let body = "## Plan\n\n- first bullet item that wraps cleanly\n  - nested item\n1. numbered item\n- [x] done\n\n> quoted note\n\nSee [docs](https://example.com) and <https://example.com>.\n\n---";
-        let rows = render_markdown(body, 28, t.ui.text_primary, "src/a.rs", 4, &t);
+        let rows = render_markdown(body, 28, t.ui.text_primary, "src/a.rs", 4, t);
         assert_width_bound(&rows, 28);
 
         let text = rows_text(&rows);
         assert_eq!(text[0], "Plan");
         assert!(rows[0][0].style.add_modifier.contains(Modifier::BOLD));
         assert!(text.iter().any(|line| line.starts_with("• first bullet")));
+        assert!(text.iter().any(|line| line.starts_with("  wraps cleanly")));
         assert!(text.iter().any(|line| line.starts_with("  • nested")));
         assert!(text.iter().any(|line| line.starts_with("1. numbered")));
         assert!(text.iter().any(|line| line.starts_with("☑ done")));
@@ -832,10 +833,10 @@ mod tests {
 
     #[test]
     fn test_narrow_width_tabs_and_wide_emojis_never_overflow() {
-        let t = theme::Theme::dark();
+        let t = theme::get();
         let body = "✅ SuperLongUnbreakableIdentifier\twith\ttabs\n\n```\n\tlet x = \"🚀 long code line\";\n```";
         for width in [6, 10, 16, 30] {
-            let rows = render_markdown(body, width, t.ui.text_primary, "src/a.rs", 4, &t);
+            let rows = render_markdown(body, width, t.ui.text_primary, "src/a.rs", 4, t);
             assert_width_bound(&rows, width);
         }
     }
