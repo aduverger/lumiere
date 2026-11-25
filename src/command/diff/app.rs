@@ -441,37 +441,60 @@ fn remove_edited_comment(state: &mut AppState, editor: &AnnotationEditor) {
     }
 }
 
-/// Keeps an open `ThreadView` modal synchronized with `state.threads`, closing it
-/// (and any editor attached to it) if the thread no longer exists.
-fn sync_thread_modal(
+/// Closes an open `ThreadView` modal (and any editor attached to it) if its
+/// thread was deleted, returning to the threads list when it was opened there.
+fn close_deleted_thread_modal(
     state: &AppState,
     active_modal: &mut Option<Modal>,
     annotation_editor: &mut Option<AnnotationEditor>,
+    show_resolved_threads: bool,
 ) {
     let Some(Modal {
-        content: ModalContent::ThreadView { thread, .. },
-    }) = active_modal.as_mut()
+        content:
+            ModalContent::ThreadView {
+                thread_id,
+                return_to_list,
+                ..
+            },
+    }) = active_modal.as_ref()
     else {
         return;
     };
-    match state.thread_by_id(&thread.id) {
-        Some(live) => {
-            if live != thread {
-                *thread = live.clone();
-            }
-        }
-        None => {
-            let closed_id = thread.id.clone();
-            *active_modal = None;
-            if annotation_editor
-                .as_ref()
-                .and_then(|e| e.thread_id.as_deref())
-                == Some(closed_id.as_str())
-            {
-                *annotation_editor = None;
-            }
-        }
+    if state.thread_by_id(thread_id).is_some() {
+        return;
     }
+    let closed_id = thread_id.clone();
+    let reopen_list = *return_to_list && !state.threads.is_empty();
+    *active_modal = reopen_list.then(|| threads_modal(&state.threads, None, show_resolved_threads));
+    if annotation_editor
+        .as_ref()
+        .and_then(|e| e.thread_id.as_deref())
+        == Some(closed_id.as_str())
+    {
+        *annotation_editor = None;
+    }
+}
+
+/// Dismisses the active modal, reopening the `I` threads list (with the same
+/// thread selected) when dismissing a `ThreadView` that was opened from it.
+fn dismiss_modal(
+    state: &AppState,
+    active_modal: &mut Option<Modal>,
+    show_resolved_threads: bool,
+) {
+    let reopen_selected = match active_modal.as_ref() {
+        Some(Modal {
+            content:
+                ModalContent::ThreadView {
+                    thread_id,
+                    return_to_list: true,
+                    ..
+                },
+        }) if !state.threads.is_empty() => Some(thread_id.clone()),
+        _ => None,
+    };
+    *active_modal = reopen_selected
+        .map(|id| threads_modal(&state.threads, Some(&id), show_resolved_threads));
 }
 
 fn rect_contains(rect: Rect, column: u16, row: u16) -> bool {
@@ -807,7 +830,12 @@ fn run_app_internal<'a>(
             }
         }
 
-        sync_thread_modal(&state, &mut active_modal, &mut annotation_editor);
+        close_deleted_thread_modal(
+            &state,
+            &mut active_modal,
+            &mut annotation_editor,
+            show_resolved_threads,
+        );
 
         if state.file_diffs.is_empty() {
             terminal.draw(|frame| {
@@ -817,7 +845,7 @@ fn run_app_internal<'a>(
                     workspace_session.as_ref().map(|session| session.active_name()),
                 );
                 if let Some(ref modal) = active_modal {
-                    modal.render(frame, annotation_editor.as_ref());
+                    modal.render(frame, &state.threads, annotation_editor.as_ref());
                 }
             })?;
             state.editor_rect = active_modal.as_ref().and_then(Modal::editor_rect);
@@ -1000,7 +1028,7 @@ fn run_app_internal<'a>(
                 // Editor is rendered inline by render_diff above (or docked inside
                 // ThreadView when that modal is open); the modal sits on top.
                 if let Some(ref modal) = active_modal {
-                    modal.render(frame, annotation_editor.as_ref());
+                    modal.render(frame, &state.threads, annotation_editor.as_ref());
                     if let Some(er) = modal.editor_rect() {
                         editor_rect_cell.set(Some(er));
                     }
@@ -1159,9 +1187,12 @@ fn run_app_internal<'a>(
                                 ModalResult::AnnotationOpen { annotation_id } => {
                                     active_modal = state
                                         .thread_by_id(&annotation_id)
-                                        .cloned()
                                         .map(|thread| {
-                                            Modal::thread_view(thread, state.settings.tab_width)
+                                            Modal::thread_view(
+                                                thread.id.clone(),
+                                                state.settings.tab_width,
+                                                true,
+                                            )
                                         });
                                 }
                                 ModalResult::AnnotationJump { annotation_id } => {
@@ -1325,7 +1356,7 @@ fn run_app_internal<'a>(
                                     }
                                 }
                                 ModalResult::Dismissed => {
-                                    active_modal = None;
+                                    dismiss_modal(&state, &mut active_modal, show_resolved_threads);
                                     open_picker = None;
                                 }
                             }
@@ -1406,8 +1437,9 @@ fn run_app_internal<'a>(
                                 if let Some(thread) = state.thread_by_id(&id) {
                                     if clicked_expand {
                                         active_modal = Some(Modal::thread_view(
-                                            thread.clone(),
+                                            thread.id.clone(),
                                             state.settings.tab_width,
+                                            false,
                                         ));
                                     } else {
                                         annotation_editor =
@@ -2269,15 +2301,17 @@ fn run_app_internal<'a>(
                             }
                         }
                         KeyCode::Char('t') => {
-                            let thread =
+                            let thread_id =
                                 target_at_cursor(&mut state).and_then(|(filename, target)| {
-                                    thread_at_cursor(&state, &filename, &target, true).cloned()
+                                    thread_at_cursor(&state, &filename, &target, true)
+                                        .map(|thread| thread.id.clone())
                                 });
-                            match thread {
-                                Some(thread) => {
+                            match thread_id {
+                                Some(thread_id) => {
                                     active_modal = Some(Modal::thread_view(
-                                        thread,
+                                        thread_id,
                                         state.settings.tab_width,
+                                        false,
                                     ));
                                 }
                                 None => {
@@ -2982,31 +3016,47 @@ mod tests {
     }
 
     #[test]
-    fn test_sync_thread_modal_updates_live_and_closes_when_thread_is_removed() {
+    fn test_thread_modal_dismiss_returns_to_list_only_when_opened_from_list() {
         let mut state = state_with_file("a\n", "b\n");
-        let (thread_id, _) =
+        let (first_id, _) =
             state.add_thread("a.rs".to_string(), AnnotationTarget::File, "first".to_string());
-        let mut active_modal = Some(Modal::thread_view(
-            state.thread_by_id(&thread_id).unwrap().clone(),
-            4,
-        ));
-        let mut editor = Some(AnnotationEditor::for_thread(
-            state.thread_by_id(&thread_id).unwrap(),
-        ));
+        let (second_id, _) =
+            state.add_thread("a.rs".to_string(), AnnotationTarget::File, "second".to_string());
 
-        state.add_reply(&thread_id, "second".to_string());
-        sync_thread_modal(&state, &mut active_modal, &mut editor);
-        match &active_modal {
+        // Opened from diff view: dismiss closes straight back to the file.
+        let mut from_diff = Some(Modal::thread_view(second_id.clone(), 4, false));
+        dismiss_modal(&state, &mut from_diff, false);
+        assert!(from_diff.is_none());
+
+        // Opened from `I` list: dismiss reopens the list with the same thread selected.
+        let mut from_list = Some(Modal::thread_view(second_id.clone(), 4, true));
+        dismiss_modal(&state, &mut from_list, false);
+        assert!(matches!(
+            from_list,
             Some(Modal {
-                content: ModalContent::ThreadView { thread, .. },
-            }) => assert_eq!(thread.comments.len(), 2),
-            _ => panic!("expected ThreadView modal to remain open with live reply"),
-        }
-        assert!(editor.is_some());
+                content: ModalContent::Annotations { selected: 1, .. }
+            })
+        ));
 
-        state.remove_thread(&thread_id);
-        sync_thread_modal(&state, &mut active_modal, &mut editor);
-        assert!(active_modal.is_none());
+        // Deleting a thread while open closes its editor and returns to the list if opened from it.
+        let mut active_modal = Some(Modal::thread_view(second_id.clone(), 4, true));
+        let mut editor = Some(AnnotationEditor::for_thread(
+            state.thread_by_id(&second_id).unwrap(),
+        ));
+        state.remove_thread(&second_id);
+        close_deleted_thread_modal(&state, &mut active_modal, &mut editor, false);
         assert!(editor.is_none());
+        assert!(matches!(
+            active_modal,
+            Some(Modal {
+                content: ModalContent::Annotations { ref annotations, .. }
+            }) if annotations.len() == 1 && annotations[0].id == first_id
+        ));
+
+        // Removing the last thread closes the modal cleanly.
+        let mut last_modal = Some(Modal::thread_view(first_id.clone(), 4, true));
+        state.remove_thread(&first_id);
+        close_deleted_thread_modal(&state, &mut last_modal, &mut editor, false);
+        assert!(last_modal.is_none());
     }
 }

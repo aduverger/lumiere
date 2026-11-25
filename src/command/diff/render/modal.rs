@@ -72,8 +72,9 @@ pub enum ModalContent {
     },
     /// Focused scrollable view of a single review thread.
     ThreadView {
-        thread: Thread,
+        thread_id: String,
         tab_width: usize,
+        return_to_list: bool,
         scroll: usize,
         pinned_to_bottom: bool,
         last_max_scroll: Cell<usize>,
@@ -213,11 +214,12 @@ impl Modal {
         }
     }
 
-    pub fn thread_view(thread: Thread, tab_width: usize) -> Self {
+    pub fn thread_view(thread_id: String, tab_width: usize, return_to_list: bool) -> Self {
         Self {
             content: ModalContent::ThreadView {
-                thread,
+                thread_id,
                 tab_width,
+                return_to_list,
                 scroll: 0,
                 pinned_to_bottom: true,
                 last_max_scroll: Cell::new(0),
@@ -249,7 +251,12 @@ impl Modal {
         }
     }
 
-    pub fn render(&self, frame: &mut Frame, editor: Option<&AnnotationEditor>) {
+    pub fn render(
+        &self,
+        frame: &mut Frame,
+        threads: &[Thread],
+        editor: Option<&AnnotationEditor>,
+    ) {
         let area = frame.area();
 
         // GlobalSearch takes the full screen with its own two-pane layout.
@@ -373,7 +380,7 @@ impl Modal {
                 self.render_annotations(frame, modal_area, title, items, *selected);
             }
             ModalContent::ThreadView {
-                thread,
+                thread_id,
                 tab_width,
                 scroll,
                 pinned_to_bottom,
@@ -382,18 +389,24 @@ impl Modal {
                 last_editor_rect,
                 ..
             } => {
-                self.render_thread_view(
-                    frame,
-                    modal_area,
-                    thread,
-                    *tab_width,
-                    *scroll,
-                    *pinned_to_bottom,
-                    last_max_scroll,
-                    last_visible_height,
-                    last_editor_rect,
-                    editor,
-                );
+                if let Some(thread) = threads.iter().find(|t| t.id == *thread_id) {
+                    self.render_thread_view(
+                        frame,
+                        modal_area,
+                        thread,
+                        *tab_width,
+                        *scroll,
+                        *pinned_to_bottom,
+                        last_max_scroll,
+                        last_visible_height,
+                        last_editor_rect,
+                        editor,
+                    );
+                } else {
+                    last_max_scroll.set(0);
+                    last_visible_height.set(0);
+                    last_editor_rect.set(None);
+                }
             }
             ModalContent::GlobalSearch { .. } => unreachable!(),
         }
@@ -1477,7 +1490,7 @@ impl Modal {
                 _ => None,
             },
             ModalContent::ThreadView {
-                thread,
+                thread_id,
                 scroll,
                 pinned_to_bottom,
                 last_max_scroll,
@@ -1524,13 +1537,13 @@ impl Modal {
                         None
                     }
                     KeyCode::Char('i') => Some(ModalResult::ThreadReply {
-                        thread_id: thread.id.clone(),
+                        thread_id: thread_id.clone(),
                     }),
                     KeyCode::Char('x') => Some(ModalResult::ThreadToggleResolved {
-                        thread_id: thread.id.clone(),
+                        thread_id: thread_id.clone(),
                     }),
                     KeyCode::Char('g') => Some(ModalResult::AnnotationJump {
-                        annotation_id: thread.id.clone(),
+                        annotation_id: thread_id.clone(),
                     }),
                     _ => None,
                 }
@@ -2225,13 +2238,14 @@ mod tests {
 
     fn drawn_with_editor(
         modal: &Modal,
+        threads: &[Thread],
         editor: Option<&AnnotationEditor>,
         columns: u16,
         rows: u16,
     ) -> String {
         let mut terminal = Terminal::new(TestBackend::new(columns, rows)).expect("terminal");
         terminal
-            .draw(|frame| modal.render(frame, editor))
+            .draw(|frame| modal.render(frame, threads, editor))
             .expect("draw");
         let buffer = terminal.backend().buffer();
         let cells = buffer.content.iter().map(|cell| cell.symbol());
@@ -2239,7 +2253,7 @@ mod tests {
     }
 
     fn drawn(modal: &Modal, columns: u16, rows: u16) -> String {
-        drawn_with_editor(modal, None, columns, rows)
+        drawn_with_editor(modal, &[], None, columns, rows)
     }
 
     #[test]
@@ -2284,10 +2298,10 @@ mod tests {
             ));
         }
 
-        let mut modal = Modal::thread_view(thread.clone(), 4);
+        let mut modal = Modal::thread_view(thread.id.clone(), 4, false);
 
         // Initial render is pinned to bottom: latest comment visible, earliest scrolled off.
-        let initial = drawn(&modal, 90, 20);
+        let initial = drawn_with_editor(&modal, std::slice::from_ref(&thread), None, 90, 20);
         assert!(initial.contains("src/app.rs:L10-19 [new] · 8 comments"));
         assert!(initial.contains("comment-08 body line"));
         assert!(!initial.contains("comment-01 opening"));
@@ -2295,7 +2309,7 @@ mod tests {
 
         // Home scrolls to top: anchored snippet (capped to 8 lines) and first comment visible.
         modal.handle_input(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), 20);
-        let at_top = drawn(&modal, 90, 20);
+        let at_top = drawn_with_editor(&modal, std::slice::from_ref(&thread), None, 90, 20);
         assert!(at_top.contains("let v1 = 1;"));
         assert!(at_top.contains("let v8 = 8;"));
         assert!(!at_top.contains("let v9 = 9;"));
@@ -2303,7 +2317,8 @@ mod tests {
 
         // End / G re-pins to bottom.
         modal.handle_input(KeyEvent::new(KeyCode::Char('G'), KeyModifiers::NONE), 20);
-        let back_at_bottom = drawn(&modal, 90, 20);
+        let back_at_bottom =
+            drawn_with_editor(&modal, std::slice::from_ref(&thread), None, 90, 20);
         assert!(back_at_bottom.contains("comment-08 body line"));
 
         // Mouse wheel up scrolls up from bottom, shifting the last line out of view.
@@ -2314,7 +2329,7 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         };
         assert!(modal.handle_mouse(wheel_up, 90, 20));
-        let scrolled_up = drawn(&modal, 90, 20);
+        let scrolled_up = drawn_with_editor(&modal, std::slice::from_ref(&thread), None, 90, 20);
         assert!(!scrolled_up.contains("second line 8"));
 
         // Action keys return the expected ModalResults.
@@ -2335,12 +2350,19 @@ mod tests {
             Some(ModalResult::Dismissed)
         ));
 
-        // Docking an editor edits a queued draft in place and hides it from the history above.
-        thread.comments.push(Comment::human("unsent draft text".to_string(), true));
-        let modal_with_draft = Modal::thread_view(thread.clone(), 4);
+        // Live replies in `threads` render immediately without replacing the modal,
+        // and docking an editor edits a queued draft while hiding it from history above.
+        thread
+            .comments
+            .push(Comment::human("unsent draft text".to_string(), true));
+        modal.pin_thread_to_bottom();
+        let live_reply = drawn_with_editor(&modal, std::slice::from_ref(&thread), None, 90, 24);
+        assert!(live_reply.contains("unsent draft text"));
+
         let editor = AnnotationEditor::for_thread(&thread);
-        let with_editor = drawn_with_editor(&modal_with_draft, Some(&editor), 90, 24);
-        assert!(modal_with_draft.editor_rect().is_some());
+        let with_editor =
+            drawn_with_editor(&modal, std::slice::from_ref(&thread), Some(&editor), 90, 24);
+        assert!(modal.editor_rect().is_some());
         assert!(with_editor.contains("Enter send"));
         assert!(with_editor.contains("comment-08 body line"));
         assert_eq!(with_editor.matches("unsent draft text").count(), 1);
