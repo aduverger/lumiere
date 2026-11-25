@@ -2,7 +2,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use ratatui::prelude::*;
 
 use crate::command::diff::highlight::highlight_code_lines;
-use crate::command::diff::render::diff_view::{chars_to_spans, expand_tabs_in_spans};
+use crate::command::diff::render::diff_view::expand_tabs_in_spans;
 use crate::command::diff::theme;
 
 enum Container {
@@ -19,6 +19,13 @@ struct CodeBlockBuffer {
 struct LinkState {
     url: String,
     label: String,
+}
+
+#[derive(Clone)]
+struct StyledGrapheme {
+    text: String,
+    style: Style,
+    width: usize,
 }
 
 /// Renders Markdown comment `body` into wrapped rows of styled spans, each with
@@ -49,7 +56,7 @@ pub fn render_markdown(
         inline_spans: Vec::new(),
         code_block: None,
         link_stack: Vec::new(),
-        last_block_end: None,
+        last_content_end: None,
     };
 
     for (event, range) in parser {
@@ -71,7 +78,7 @@ struct MarkdownRenderer<'a> {
     inline_spans: Vec<Span<'static>>,
     code_block: Option<CodeBlockBuffer>,
     link_stack: Vec<LinkState>,
-    last_block_end: Option<usize>,
+    last_content_end: Option<usize>,
 }
 
 impl<'a> MarkdownRenderer<'a> {
@@ -91,12 +98,12 @@ impl<'a> MarkdownRenderer<'a> {
     }
 
     /// Emits a blank separator row when the source left at least one blank line
-    /// between the previous finished block and the block starting at `start`.
+    /// between the previous emitted content and the block starting at `start`.
     fn maybe_emit_blank_line(&mut self, start: usize) {
         if self.rows.is_empty() {
             return;
         }
-        let Some(prev_end) = self.last_block_end else {
+        let Some(prev_end) = self.last_content_end else {
             return;
         };
         if start < prev_end || start > self.source.len() {
@@ -110,7 +117,7 @@ impl<'a> MarkdownRenderer<'a> {
         if newlines >= required_newlines {
             let prefix = self.blank_line_prefix();
             self.rows.push(truncate_spans(&prefix, self.width));
-            self.last_block_end = None;
+            self.last_content_end = None;
         }
     }
 
@@ -173,6 +180,44 @@ impl<'a> MarkdownRenderer<'a> {
         self.rows.extend(wrapped);
     }
 
+    fn push_inline_break(&mut self) {
+        if self.inline_spans.is_empty() {
+            let (first_prefix, _) = self.take_prefixes();
+            self.rows.push(truncate_spans(&first_prefix, self.width));
+        } else {
+            self.flush_inline();
+        }
+    }
+
+    fn push_multiline_text(&mut self, text: &str, flush_trailing_newline: bool) {
+        let normalized = text.replace("\r\n", "\n");
+        let trailing_nl = flush_trailing_newline && normalized.ends_with('\n');
+        let body = if trailing_nl {
+            normalized.strip_suffix('\n').unwrap_or(&normalized)
+        } else {
+            normalized.as_str()
+        };
+        let style = self.current_style();
+        for (idx, line) in body.split('\n').enumerate() {
+            if idx > 0 {
+                if let Some(link) = self.link_stack.last_mut() {
+                    link.label.push(' ');
+                }
+                self.push_inline_break();
+            }
+            if !line.is_empty() {
+                if let Some(link) = self.link_stack.last_mut() {
+                    link.label.push_str(line);
+                }
+                self.inline_spans
+                    .push(Span::styled(line.to_string(), style));
+            }
+        }
+        if trailing_nl {
+            self.push_inline_break();
+        }
+    }
+
     fn handle_event(&mut self, event: Event<'_>, range: std::ops::Range<usize>) {
         if let Some(buf) = self.code_block.as_mut() {
             match event {
@@ -183,7 +228,7 @@ impl<'a> MarkdownRenderer<'a> {
                 Event::End(TagEnd::CodeBlock) => {
                     let buf = self.code_block.take().unwrap();
                     self.emit_code_block(buf);
-                    self.last_block_end = Some(range.end);
+                    self.last_content_end = Some(range.end);
                     return;
                 }
                 _ => return,
@@ -193,12 +238,17 @@ impl<'a> MarkdownRenderer<'a> {
         match event {
             Event::Start(tag) => self.handle_start(tag, range.start),
             Event::End(tag_end) => self.handle_end(tag_end, range.end),
-            Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) => {
-                if let Some(link) = self.link_stack.last_mut() {
-                    link.label.push_str(&text);
-                }
-                let style = self.current_style();
-                self.inline_spans.push(Span::styled(text.into_string(), style));
+            Event::Text(text) => {
+                self.push_multiline_text(&text, false);
+                self.last_content_end = Some(range.end);
+            }
+            Event::Html(text) => {
+                self.push_multiline_text(&text, true);
+                self.last_content_end = Some(range.end);
+            }
+            Event::InlineHtml(text) => {
+                self.push_multiline_text(&text, false);
+                self.last_content_end = Some(range.end);
             }
             Event::Code(code) => {
                 let normalized = code.replace("\r\n", " ").replace('\n', " ");
@@ -214,14 +264,10 @@ impl<'a> MarkdownRenderer<'a> {
                 if let Some(line) = lines.pop() {
                     self.inline_spans.extend(line);
                 }
+                self.last_content_end = Some(range.end);
             }
             Event::SoftBreak | Event::HardBreak => {
-                if self.inline_spans.is_empty() {
-                    let (first_prefix, _) = self.take_prefixes();
-                    self.rows.push(truncate_spans(&first_prefix, self.width));
-                } else {
-                    self.flush_inline();
-                }
+                self.push_inline_break();
             }
             Event::Rule => {
                 self.start_block(range.start);
@@ -234,7 +280,7 @@ impl<'a> MarkdownRenderer<'a> {
                     Style::default().fg(self.theme.ui.border_unfocused),
                 ));
                 self.rows.push(row);
-                self.last_block_end = Some(range.end);
+                self.last_content_end = Some(range.end);
             }
             Event::TaskListMarker(checked) => {
                 let checkbox = if checked { "☑ " } else { "☐ " };
@@ -246,6 +292,7 @@ impl<'a> MarkdownRenderer<'a> {
                 {
                     *marker = checkbox.to_string();
                 }
+                self.last_content_end = Some(range.end);
             }
             _ => {}
         }
@@ -253,7 +300,7 @@ impl<'a> MarkdownRenderer<'a> {
 
     fn handle_start(&mut self, tag: Tag<'_>, start: usize) {
         match tag {
-            Tag::Paragraph => self.start_block(start),
+            Tag::Paragraph | Tag::HtmlBlock => self.start_block(start),
             Tag::Heading { .. } => {
                 self.start_block(start);
                 self.style_stack
@@ -331,30 +378,26 @@ impl<'a> MarkdownRenderer<'a> {
 
     fn handle_end(&mut self, tag_end: TagEnd, end: usize) {
         match tag_end {
-            TagEnd::Paragraph => {
+            TagEnd::Paragraph | TagEnd::HtmlBlock => {
                 self.flush_inline();
-                self.last_block_end = Some(end);
+                self.last_content_end = Some(end);
             }
             TagEnd::Heading(_) => {
                 self.flush_inline();
                 self.style_stack.pop();
-                self.last_block_end = Some(end);
+                self.last_content_end = Some(end);
             }
+            // Container close ranges in pulldown-cmark can extend past trailing
+            // blank lines to the start of the next block, so leave
+            // `last_content_end` at the last emitted leaf content.
             TagEnd::BlockQuote(_) => {
                 self.flush_inline();
                 self.containers.pop();
                 self.style_stack.pop();
-                self.last_block_end = Some(end);
             }
-            TagEnd::List(_) => {
+            TagEnd::List(_) | TagEnd::Item => {
                 self.flush_inline();
                 self.containers.pop();
-                self.last_block_end = Some(end);
-            }
-            TagEnd::Item => {
-                self.flush_inline();
-                self.containers.pop();
-                self.last_block_end = Some(end);
             }
             TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough => {
                 self.style_stack.pop();
@@ -400,52 +443,67 @@ fn str_width(text: &str) -> usize {
     Span::raw(text).width()
 }
 
-fn char_width(ch: char) -> usize {
-    let mut buf = [0u8; 4];
-    let text: &str = ch.encode_utf8(&mut buf);
-    Span::raw(text).width()
-}
-
 fn spans_width(spans: &[Span<'_>]) -> usize {
     spans.iter().map(Span::width).sum()
+}
+
+fn spans_to_graphemes(spans: Vec<Span<'static>>, tab_width: usize) -> Vec<StyledGrapheme> {
+    let expanded = expand_tabs_in_spans(spans, tab_width);
+    let mut graphemes = Vec::new();
+    for span in expanded {
+        for g in span.styled_graphemes(Style::default()) {
+            graphemes.push(StyledGrapheme {
+                width: str_width(g.symbol),
+                text: g.symbol.to_string(),
+                style: g.style,
+            });
+        }
+    }
+    graphemes
+}
+
+fn graphemes_to_spans(graphemes: &[StyledGrapheme]) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut iter = graphemes.iter();
+    let Some(first) = iter.next() else {
+        return spans;
+    };
+    let mut current_style = first.style;
+    let mut buffer = first.text.clone();
+    for g in iter {
+        if g.style == current_style {
+            buffer.push_str(&g.text);
+        } else {
+            spans.push(Span::styled(std::mem::take(&mut buffer), current_style));
+            buffer.push_str(&g.text);
+            current_style = g.style;
+        }
+    }
+    spans.push(Span::styled(buffer, current_style));
+    spans
 }
 
 fn truncate_spans(spans: &[Span<'static>], max_width: usize) -> Vec<Span<'static>> {
     if spans_width(spans) <= max_width {
         return spans.to_vec();
     }
-    let mut out = Vec::new();
+    let mut kept = Vec::new();
     let mut used = 0;
     for span in spans {
-        let mut buf = String::new();
-        for ch in span.content.chars() {
-            let w = char_width(ch);
+        for g in span.styled_graphemes(Style::default()) {
+            let w = str_width(g.symbol);
             if used + w > max_width {
-                break;
+                return graphemes_to_spans(&kept);
             }
-            buf.push(ch);
+            kept.push(StyledGrapheme {
+                text: g.symbol.to_string(),
+                style: g.style,
+                width: w,
+            });
             used += w;
         }
-        if !buf.is_empty() {
-            out.push(Span::styled(buf, span.style));
-        }
-        if used >= max_width {
-            break;
-        }
     }
-    out
-}
-
-fn flatten_styled_chars(spans: Vec<Span<'static>>, tab_width: usize) -> Vec<(char, Style)> {
-    let expanded = expand_tabs_in_spans(spans, tab_width);
-    let mut chars = Vec::new();
-    for span in expanded {
-        let style = span.style;
-        for ch in span.content.chars() {
-            chars.push((ch, style));
-        }
-    }
-    chars
+    graphemes_to_spans(&kept)
 }
 
 fn wrap_prose_line(
@@ -462,32 +520,32 @@ fn wrap_prose_line(
     let first_avail = width.saturating_sub(spans_width(&first_prefix)).max(1);
     let cont_avail = width.saturating_sub(spans_width(&cont_prefix)).max(1);
 
-    let chars = flatten_styled_chars(spans, tab_width);
-    if chars.is_empty() {
+    let graphemes = spans_to_graphemes(spans, tab_width);
+    if graphemes.is_empty() {
         return vec![first_prefix];
     }
 
-    let mut tokens: Vec<(bool, Vec<(char, Style)>)> = Vec::new();
-    for (ch, style) in chars {
-        let is_space = ch == ' ';
+    let mut tokens: Vec<(bool, Vec<StyledGrapheme>)> = Vec::new();
+    for g in graphemes {
+        let is_space = g.text == " ";
         if let Some((last_is_space, buf)) = tokens.last_mut() {
             if *last_is_space == is_space {
-                buf.push((ch, style));
+                buf.push(g);
                 continue;
             }
         }
-        tokens.push((is_space, vec![(ch, style)]));
+        tokens.push((is_space, vec![g]));
     }
 
     let mut rows: Vec<Vec<Span<'static>>> = Vec::new();
-    let mut line_chars: Vec<(char, Style)> = Vec::new();
+    let mut line_graphemes: Vec<StyledGrapheme> = Vec::new();
     let mut line_width = 0usize;
-    let mut pending_spaces: Vec<(char, Style)> = Vec::new();
+    let mut pending_spaces: Vec<StyledGrapheme> = Vec::new();
     let mut pending_space_width = 0usize;
     let mut is_first = true;
 
     let flush_row = |rows: &mut Vec<Vec<Span<'static>>>,
-                     line_chars: &mut Vec<(char, Style)>,
+                     line_graphemes: &mut Vec<StyledGrapheme>,
                      line_width: &mut usize,
                      is_first: &mut bool| {
         let mut row = if *is_first {
@@ -495,15 +553,15 @@ fn wrap_prose_line(
         } else {
             cont_prefix.clone()
         };
-        row.extend(chars_to_spans(line_chars));
+        row.extend(graphemes_to_spans(line_graphemes));
         rows.push(row);
-        line_chars.clear();
+        line_graphemes.clear();
         *line_width = 0;
         *is_first = false;
     };
 
     for (is_space, token) in tokens {
-        let token_width: usize = token.iter().map(|(c, _)| char_width(*c)).sum();
+        let token_width: usize = token.iter().map(|g| g.width).sum();
         if is_space {
             pending_spaces.extend(token);
             pending_space_width += token_width;
@@ -511,13 +569,13 @@ fn wrap_prose_line(
         }
 
         let avail = if is_first { first_avail } else { cont_avail };
-        if !line_chars.is_empty() && line_width + pending_space_width + token_width > avail {
-            flush_row(&mut rows, &mut line_chars, &mut line_width, &mut is_first);
+        if !line_graphemes.is_empty() && line_width + pending_space_width + token_width > avail {
+            flush_row(&mut rows, &mut line_graphemes, &mut line_width, &mut is_first);
             pending_spaces.clear();
             pending_space_width = 0;
         } else if !pending_spaces.is_empty() {
-            if !line_chars.is_empty() && line_width + pending_space_width <= avail {
-                line_chars.append(&mut pending_spaces);
+            if !line_graphemes.is_empty() && line_width + pending_space_width <= avail {
+                line_graphemes.append(&mut pending_spaces);
                 line_width += pending_space_width;
             } else {
                 pending_spaces.clear();
@@ -529,37 +587,36 @@ fn wrap_prose_line(
         while !remaining.is_empty() {
             let avail = if is_first { first_avail } else { cont_avail };
             let space_left = avail.saturating_sub(line_width);
-            let rem_width: usize = remaining.iter().map(|(c, _)| char_width(*c)).sum();
+            let rem_width: usize = remaining.iter().map(|g| g.width).sum();
             if rem_width <= space_left {
-                line_chars.extend_from_slice(remaining);
+                line_graphemes.extend_from_slice(remaining);
                 line_width += rem_width;
                 break;
             }
-            if !line_chars.is_empty() {
-                flush_row(&mut rows, &mut line_chars, &mut line_width, &mut is_first);
+            if !line_graphemes.is_empty() {
+                flush_row(&mut rows, &mut line_graphemes, &mut line_width, &mut is_first);
                 continue;
             }
             let mut take = 0usize;
             let mut take_width = 0usize;
-            for (idx, (ch, _)) in remaining.iter().enumerate() {
-                let w = char_width(*ch);
-                if take > 0 && take_width + w > avail {
+            for (idx, g) in remaining.iter().enumerate() {
+                if take > 0 && take_width + g.width > avail {
                     break;
                 }
                 take = idx + 1;
-                take_width += w;
+                take_width += g.width;
             }
-            line_chars.extend_from_slice(&remaining[..take]);
+            line_graphemes.extend_from_slice(&remaining[..take]);
             line_width += take_width;
             remaining = &remaining[take..];
             if !remaining.is_empty() {
-                flush_row(&mut rows, &mut line_chars, &mut line_width, &mut is_first);
+                flush_row(&mut rows, &mut line_graphemes, &mut line_width, &mut is_first);
             }
         }
     }
 
-    if !line_chars.is_empty() || rows.is_empty() {
-        flush_row(&mut rows, &mut line_chars, &mut line_width, &mut is_first);
+    if !line_graphemes.is_empty() || rows.is_empty() {
+        flush_row(&mut rows, &mut line_graphemes, &mut line_width, &mut is_first);
     }
     rows
 }
@@ -594,8 +651,8 @@ fn wrap_code_line(
         }
     };
 
-    let chars = flatten_styled_chars(spans, tab_width);
-    if chars.is_empty() {
+    let graphemes = spans_to_graphemes(spans, tab_width);
+    if graphemes.is_empty() {
         let avail = code_width(&first_prefix);
         let mut row = first_prefix;
         row.push(Span::styled(
@@ -608,22 +665,21 @@ fn wrap_code_line(
     let mut rows = Vec::new();
     let mut start = 0usize;
     let mut is_first = true;
-    while start < chars.len() {
+    while start < graphemes.len() {
         let prefix = if is_first { &first_prefix } else { &cont_prefix };
         let avail = code_width(prefix);
-        let slice = &chars[start..];
+        let slice = &graphemes[start..];
 
         let mut fit_len = 0usize;
         let mut fit_width = 0usize;
         let mut last_space: Option<(usize, usize)> = None;
         let mut saw_non_space = false;
 
-        for (idx, (ch, _)) in slice.iter().enumerate() {
-            let w = char_width(*ch);
-            if fit_len > 0 && fit_width + w > avail {
+        for (idx, g) in slice.iter().enumerate() {
+            if fit_len > 0 && fit_width + g.width > avail {
                 break;
             }
-            if *ch == ' ' {
+            if g.text == " " {
                 if saw_non_space {
                     last_space = Some((idx, fit_width));
                 }
@@ -631,14 +687,14 @@ fn wrap_code_line(
                 saw_non_space = true;
             }
             fit_len = idx + 1;
-            fit_width += w;
+            fit_width += g.width;
         }
 
-        let (take_len, take_width, next_offset) = if start + fit_len >= chars.len() {
+        let (take_len, take_width, next_offset) = if start + fit_len >= graphemes.len() {
             (fit_len, fit_width, fit_len)
         } else if let Some((space_idx, width_before_space)) = last_space {
             let mut next = space_idx + 1;
-            while next < slice.len() && slice[next].0 == ' ' {
+            while next < slice.len() && slice[next].text == " " {
                 next += 1;
             }
             (space_idx, width_before_space, next)
@@ -647,7 +703,7 @@ fn wrap_code_line(
         };
 
         let mut row = prefix.clone();
-        row.extend(chars_to_spans(&slice[..take_len]));
+        row.extend(graphemes_to_spans(&slice[..take_len]));
         let pad = avail.saturating_sub(take_width);
         if pad > 0 {
             row.push(Span::styled(" ".repeat(pad), Style::default().bg(code_bg)));
@@ -686,6 +742,14 @@ mod tests {
                 width,
                 row_text(row)
             );
+            for span in row {
+                assert!(
+                    !span.content.contains('\n') && !span.content.contains('\r'),
+                    "row {} contained raw newline in span {:?}",
+                    idx,
+                    span.content
+                );
+            }
         }
     }
 
@@ -717,14 +781,27 @@ mod tests {
         assert_eq!(rows_text(&tight), vec!["Changes:", "• one", "• two"]);
 
         let spaced = render_markdown(
-            "Changes:\n\n- one\n- two",
+            "Changes:\n\n- one\n- two\n\nAfter list",
             30,
             t.ui.text_primary,
             "src/a.rs",
             4,
             t,
         );
-        assert_eq!(rows_text(&spaced), vec!["Changes:", "", "• one", "• two"]);
+        assert_eq!(
+            rows_text(&spaced),
+            vec!["Changes:", "", "• one", "• two", "", "After list"]
+        );
+
+        let loose = render_markdown(
+            "- one\n\n- two",
+            30,
+            t.ui.text_primary,
+            "src/a.rs",
+            4,
+            t,
+        );
+        assert_eq!(rows_text(&loose), vec!["• one", "", "• two"]);
     }
 
     #[test]
@@ -755,6 +832,30 @@ mod tests {
         assert!(rows[0]
             .iter()
             .all(|s| !s.content.contains("bar") || !s.style.add_modifier.contains(Modifier::ITALIC)));
+    }
+
+    #[test]
+    fn test_html_blocks_and_multiline_inline_html_split_lines_without_raw_newlines() {
+        let t = theme::get();
+        let body = "Before\n\n<details>\n<summary>Details</summary>\nBody\n</details>\n\n<thread-id>\n\nInline <!-- one\ntwo --> end";
+        let rows = render_markdown(body, 40, t.ui.text_primary, "src/a.rs", 4, t);
+        assert_width_bound(&rows, 40);
+        assert_eq!(
+            rows_text(&rows),
+            vec![
+                "Before",
+                "",
+                "<details>",
+                "<summary>Details</summary>",
+                "Body",
+                "</details>",
+                "",
+                "<thread-id>",
+                "",
+                "Inline <!-- one",
+                "two --> end",
+            ]
+        );
     }
 
     #[test]
@@ -823,8 +924,12 @@ mod tests {
         assert!(text.iter().any(|line| line.starts_with("  wraps cleanly")));
         assert!(text.iter().any(|line| line.starts_with("  • nested")));
         assert!(text.iter().any(|line| line.starts_with("1. numbered")));
-        assert!(text.iter().any(|line| line.starts_with("☑ done")));
-        assert!(text.iter().any(|line| line.starts_with("▎ quoted note")));
+        let done_idx = text
+            .iter()
+            .position(|line| line.starts_with("☑ done"))
+            .expect("done item");
+        assert_eq!(text[done_idx + 1], "");
+        assert!(text[done_idx + 2].starts_with("▎ quoted note"));
         let joined = text.join(" ");
         assert!(joined.contains("docs (https://example.com)"));
         assert!(!joined.contains("(https://example.com) (https://example.com)"));
@@ -832,12 +937,21 @@ mod tests {
     }
 
     #[test]
-    fn test_narrow_width_tabs_and_wide_emojis_never_overflow() {
+    fn test_narrow_width_tabs_and_multi_codepoint_emojis_never_overflow() {
         let t = theme::get();
-        let body = "✅ SuperLongUnbreakableIdentifier\twith\ttabs\n\n```\n\tlet x = \"🚀 long code line\";\n```";
+        let body = "⚠️⚠️⚠️⚠️⚠️ ⚠️ SuperLongUnbreakableIdentifier\twith\ttabs and 🧑‍💻\n\n```\n\tlet x = \"⚠️ 🧑‍💻 long code line\";\n```";
         for width in [6, 10, 16, 30] {
             let rows = render_markdown(body, width, t.ui.text_primary, "src/a.rs", 4, t);
             assert_width_bound(&rows, width);
+            for row in &rows {
+                let text = row_text(row);
+                assert!(
+                    !text.contains('\u{26A0}') || text.contains("⚠️"),
+                    "warning emoji grapheme was split at width {}: {:?}",
+                    width,
+                    text
+                );
+            }
         }
     }
 }

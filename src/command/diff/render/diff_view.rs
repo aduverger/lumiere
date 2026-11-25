@@ -353,7 +353,7 @@ fn styled_chars(spans: Vec<Span<'_>>) -> Vec<(char, Style)> {
         .collect()
 }
 
-pub(super) fn chars_to_spans(chars: &[(char, Style)]) -> Vec<Span<'static>> {
+fn chars_to_spans(chars: &[(char, Style)]) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     let mut iter = chars.iter();
     let Some(&(first_ch, first_style)) = iter.next() else {
@@ -2479,16 +2479,24 @@ mod tests {
             AnnotationTarget::File,
             None,
             Comment::agent(
-                "✅ Use `def foo()` and **bold** text:\n```\ndef foo():\n    return 1\n```"
+                "⚠️ Use `def foo()` and **bold** text:\n<details>\n<summary>More</summary>\n</details>\n```\ndef foo():\n    return \"🧑‍💻\"\n```"
                     .to_string(),
                 "pi".to_string(),
             ),
         );
-        let width = 36;
+        let width = 30;
         let rows = thread_rows(&thread, None, width, 4, t);
-        assert!(rows.len() >= 5);
+        assert!(rows.len() >= 7);
         for (idx, row) in rows.iter().enumerate() {
             assert_eq!(row.width(), width, "row {} misaligned", idx);
+            for span in &row.spans {
+                assert!(
+                    !span.content.contains('\n') && !span.content.contains('\r'),
+                    "row {} contained raw newline in span {:?}",
+                    idx,
+                    span.content
+                );
+            }
         }
 
         thread.resolved = true;
