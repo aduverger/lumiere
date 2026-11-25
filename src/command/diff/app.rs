@@ -441,6 +441,69 @@ fn remove_edited_comment(state: &mut AppState, editor: &AnnotationEditor) {
     }
 }
 
+/// Keeps an open `ThreadView` modal synchronized with `state.threads`, closing it
+/// (and any editor attached to it) if the thread no longer exists.
+fn sync_thread_modal(
+    state: &AppState,
+    active_modal: &mut Option<Modal>,
+    annotation_editor: &mut Option<AnnotationEditor>,
+) {
+    let Some(Modal {
+        content: ModalContent::ThreadView { thread, .. },
+    }) = active_modal.as_mut()
+    else {
+        return;
+    };
+    match state.thread_by_id(&thread.id) {
+        Some(live) => {
+            if live != thread {
+                *thread = live.clone();
+            }
+        }
+        None => {
+            let closed_id = thread.id.clone();
+            *active_modal = None;
+            if annotation_editor
+                .as_ref()
+                .and_then(|e| e.thread_id.as_deref())
+                == Some(closed_id.as_str())
+            {
+                *annotation_editor = None;
+            }
+        }
+    }
+}
+
+fn rect_contains(rect: Rect, column: u16, row: u16) -> bool {
+    column >= rect.x && column < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height
+}
+
+/// Saves (or cancels if empty) the active editor when a left click lands outside it.
+fn dismiss_editor_on_outside_click(
+    state: &mut AppState,
+    annotation_editor: &mut Option<AnnotationEditor>,
+    active_modal: &mut Option<Modal>,
+    column: u16,
+    row: u16,
+) {
+    let inside = state
+        .editor_rect
+        .is_some_and(|r| rect_contains(r, column, row));
+    if !inside {
+        if let Some(editor) = annotation_editor.as_ref() {
+            if editor.is_empty() {
+                remove_edited_comment(state, editor);
+            } else {
+                save_comment(state, editor);
+                if let Some(modal) = active_modal.as_mut() {
+                    modal.pin_thread_to_bottom();
+                }
+            }
+        }
+        *annotation_editor = None;
+    }
+}
+
 fn queued_total(state: &AppState, workspace_session: Option<&WorkspaceSession>) -> usize {
     match workspace_session {
         Some(session) => session.queued_count(state),
@@ -744,32 +807,7 @@ fn run_app_internal<'a>(
             }
         }
 
-        if let Some(Modal {
-            content:
-                ModalContent::ThreadView {
-                    thread_id, thread, ..
-                },
-        }) = active_modal.as_mut()
-        {
-            match state.thread_by_id(thread_id) {
-                Some(live) => {
-                    if live != thread {
-                        *thread = live.clone();
-                    }
-                }
-                None => {
-                    let closed_id = thread_id.clone();
-                    active_modal = None;
-                    if annotation_editor
-                        .as_ref()
-                        .and_then(|e| e.thread_id.as_deref())
-                        == Some(closed_id.as_str())
-                    {
-                        annotation_editor = None;
-                    }
-                }
-            }
-        }
+        sync_thread_modal(&state, &mut active_modal, &mut annotation_editor);
 
         if state.file_diffs.is_empty() {
             terminal.draw(|frame| {
@@ -1301,28 +1339,13 @@ fn run_app_internal<'a>(
                             MouseEventKind::Down(crossterm::event::MouseButton::Left)
                         )
                     {
-                        let inside = state
-                            .editor_rect
-                            .map(|r| {
-                                mouse.column >= r.x
-                                    && mouse.column < r.x + r.width
-                                    && mouse.row >= r.y
-                                    && mouse.row < r.y + r.height
-                            })
-                            .unwrap_or(false);
-                        if !inside {
-                            if let Some(editor) = annotation_editor.as_ref() {
-                                if editor.is_empty() {
-                                    remove_edited_comment(&mut state, editor);
-                                } else {
-                                    save_comment(&mut state, editor);
-                                    if let Some(ref mut modal) = active_modal {
-                                        modal.pin_thread_to_bottom();
-                                    }
-                                }
-                            }
-                            annotation_editor = None;
-                        }
+                        dismiss_editor_on_outside_click(
+                            &mut state,
+                            &mut annotation_editor,
+                            &mut active_modal,
+                            mouse.column,
+                            mouse.row,
+                        );
                         continue;
                     }
                     if let Some(ref mut modal) = active_modal {
@@ -1360,41 +1383,24 @@ fn run_app_internal<'a>(
                             // Inline annotation editor: click-outside saves (or cancels if empty).
                             // Click-inside is ignored (textarea cursor placement could be wired later).
                             if annotation_editor.is_some() {
-                                let inside = state
-                                    .editor_rect
-                                    .map(|r| {
-                                        mouse.column >= r.x
-                                            && mouse.column < r.x + r.width
-                                            && mouse.row >= r.y
-                                            && mouse.row < r.y + r.height
-                                    })
-                                    .unwrap_or(false);
-                                if !inside {
-                                    if let Some(editor) = annotation_editor.as_ref() {
-                                        if editor.is_empty() {
-                                            remove_edited_comment(&mut state, editor);
-                                        } else {
-                                            save_comment(&mut state, editor);
-                                        }
-                                    }
-                                    annotation_editor = None;
-                                }
+                                dismiss_editor_on_outside_click(
+                                    &mut state,
+                                    &mut annotation_editor,
+                                    &mut active_modal,
+                                    mouse.column,
+                                    mouse.row,
+                                );
                                 continue;
                             }
                             // Click on a thread's `⋯` truncation row → open focused thread view.
                             // Click anywhere else on a thread → reply to it, or edit its unsent comment.
                             let hit_thread = state.annotation_rects.iter().find_map(|hit| {
-                                let r = hit.area;
-                                (mouse.column >= r.x
-                                    && mouse.column < r.x + r.width
-                                    && mouse.row >= r.y
-                                    && mouse.row < r.y + r.height)
-                                    .then(|| {
-                                        (
-                                            hit.thread_id.clone(),
-                                            hit.expand_rows.contains(&mouse.row),
-                                        )
-                                    })
+                                rect_contains(hit.area, mouse.column, mouse.row).then(|| {
+                                    (
+                                        hit.thread_id.clone(),
+                                        hit.expand_rows.contains(&mouse.row),
+                                    )
+                                })
                             });
                             if let Some((id, clicked_expand)) = hit_thread {
                                 if let Some(thread) = state.thread_by_id(&id) {

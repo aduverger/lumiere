@@ -72,7 +72,6 @@ pub enum ModalContent {
     },
     /// Focused scrollable view of a single review thread.
     ThreadView {
-        thread_id: String,
         thread: Thread,
         tab_width: usize,
         scroll: usize,
@@ -217,7 +216,6 @@ impl Modal {
     pub fn thread_view(thread: Thread, tab_width: usize) -> Self {
         Self {
             content: ModalContent::ThreadView {
-                thread_id: thread.id.clone(),
                 thread,
                 tab_width,
                 scroll: 0,
@@ -1273,13 +1271,11 @@ impl Modal {
     /// Handle keyboard input for the modal.
     /// Returns Some(ModalResult) if the modal should close.
     pub fn handle_input(&mut self, key: KeyEvent, terminal_height: u16) -> Option<ModalResult> {
-        // FilePicker, Annotations, and GlobalSearch handle their own dismiss logic
+        // FilePicker and GlobalSearch handle their own dismiss logic
         // (they consume printable chars for query input).
         if !matches!(
             self.content,
-            ModalContent::FilePicker { .. }
-                | ModalContent::Annotations { .. }
-                | ModalContent::GlobalSearch { .. }
+            ModalContent::FilePicker { .. } | ModalContent::GlobalSearch { .. }
         ) {
             // Close on Esc, q, or Ctrl+C
             if key.code == KeyCode::Esc
@@ -1440,13 +1436,6 @@ impl Modal {
                 selected,
                 ..
             } => match key.code {
-                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('c')
-                    if key.code == KeyCode::Esc
-                        || key.code == KeyCode::Char('q')
-                        || key.modifiers.contains(KeyModifiers::CONTROL) =>
-                {
-                    Some(ModalResult::Dismissed)
-                }
                 KeyCode::Down | KeyCode::Char('k') => {
                     if *selected < items.len().saturating_sub(1) {
                         *selected += 1;
@@ -1488,7 +1477,7 @@ impl Modal {
                 _ => None,
             },
             ModalContent::ThreadView {
-                thread_id,
+                thread,
                 scroll,
                 pinned_to_bottom,
                 last_max_scroll,
@@ -1535,13 +1524,13 @@ impl Modal {
                         None
                     }
                     KeyCode::Char('i') => Some(ModalResult::ThreadReply {
-                        thread_id: thread_id.clone(),
+                        thread_id: thread.id.clone(),
                     }),
                     KeyCode::Char('x') => Some(ModalResult::ThreadToggleResolved {
-                        thread_id: thread_id.clone(),
+                        thread_id: thread.id.clone(),
                     }),
                     KeyCode::Char('g') => Some(ModalResult::AnnotationJump {
-                        annotation_id: thread_id.clone(),
+                        annotation_id: thread.id.clone(),
                     }),
                     _ => None,
                 }

@@ -160,18 +160,16 @@ struct RenderedThread {
 
 fn truncation_indicator_row(
     count: usize,
-    singular: &str,
-    plural: &str,
-    qual: &str,
+    singular_label: &str,
     text_width: usize,
     t: &theme::Theme,
 ) -> Vec<Span<'static>> {
-    let noun = if count == 1 { singular } else { plural };
-    let with_hint = format!("⋯ {} {} {} (t to view)", count, qual, noun);
+    let suffix = if count == 1 { "" } else { "s" };
+    let with_hint = format!("⋯ {} {}{} (t to view)", count, singular_label, suffix);
     let text = if Span::raw(&with_hint).width() <= text_width {
         with_hint
     } else {
-        let short = format!("⋯ {} {} {}", count, qual, noun);
+        let short = format!("⋯ {} {}{}", count, singular_label, suffix);
         super::markdown::truncate_with_ellipsis(&short, text_width)
     };
     vec![Span::styled(text, Style::default().fg(t.ui.text_muted).italic())]
@@ -287,9 +285,7 @@ fn thread_rows(
             expand_rows.push(rows.len());
             rows.push(boxed(truncation_indicator_row(
                 hidden_comments,
-                "comment",
-                "comments",
-                "earlier",
+                "earlier comment",
                 text_width,
                 t,
             )));
@@ -305,9 +301,7 @@ fn thread_rows(
                 expand_rows.push(rows.len());
                 rows.push(boxed(truncation_indicator_row(
                     hidden_comments,
-                    "comment",
-                    "comments",
-                    "earlier",
+                    "earlier comment",
                     text_width,
                     t,
                 )));
@@ -323,9 +317,7 @@ fn thread_rows(
                     expand_rows.push(rows.len());
                     rows.push(boxed(truncation_indicator_row(
                         hidden_lines,
-                        "line",
-                        "lines",
-                        "more",
+                        "more line",
                         text_width,
                         t,
                     )));
