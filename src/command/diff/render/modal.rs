@@ -2306,7 +2306,7 @@ mod tests {
         let back_at_bottom = drawn(&modal, 90, 20);
         assert!(back_at_bottom.contains("comment-08 body line"));
 
-        // Mouse wheel up scrolls up from bottom.
+        // Mouse wheel up scrolls up from bottom, shifting the last line out of view.
         let wheel_up = MouseEvent {
             kind: MouseEventKind::ScrollUp,
             column: 45,
@@ -2314,10 +2314,8 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         };
         assert!(modal.handle_mouse(wheel_up, 90, 20));
-        assert!(matches!(
-            modal.content,
-            ModalContent::ThreadView { pinned_to_bottom: false, .. }
-        ));
+        let scrolled_up = drawn(&modal, 90, 20);
+        assert!(!scrolled_up.contains("second line 8"));
 
         // Action keys return the expected ModalResults.
         assert!(matches!(

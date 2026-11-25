@@ -2980,4 +2980,33 @@ mod tests {
         let o = crossterm::event::KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE);
         assert!(list.handle_input(o, 40).is_none());
     }
+
+    #[test]
+    fn test_sync_thread_modal_updates_live_and_closes_when_thread_is_removed() {
+        let mut state = state_with_file("a\n", "b\n");
+        let (thread_id, _) =
+            state.add_thread("a.rs".to_string(), AnnotationTarget::File, "first".to_string());
+        let mut active_modal = Some(Modal::thread_view(
+            state.thread_by_id(&thread_id).unwrap().clone(),
+            4,
+        ));
+        let mut editor = Some(AnnotationEditor::for_thread(
+            state.thread_by_id(&thread_id).unwrap(),
+        ));
+
+        state.add_reply(&thread_id, "second".to_string());
+        sync_thread_modal(&state, &mut active_modal, &mut editor);
+        match &active_modal {
+            Some(Modal {
+                content: ModalContent::ThreadView { thread, .. },
+            }) => assert_eq!(thread.comments.len(), 2),
+            _ => panic!("expected ThreadView modal to remain open with live reply"),
+        }
+        assert!(editor.is_some());
+
+        state.remove_thread(&thread_id);
+        sync_thread_modal(&state, &mut active_modal, &mut editor);
+        assert!(active_modal.is_none());
+        assert!(editor.is_none());
+    }
 }
