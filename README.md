@@ -111,18 +111,18 @@ How Lumiere compares to other interactive terminal code-review TUIs on **feature
 
 ### Performance (`bench/bench.py`)
 
-Median of 5 runs on Linux (`aarch64`, 2 vCPU) using [`bench/bench.py`](bench/bench.py) against official release binaries (`lumiere 0.1.0`, `plannotator-tui 0.12.0` backed by `diffs-rs`, `hunk 0.25.0`, `lumen 2.32.0`):
+Median of 5 runs on Linux (`aarch64`, 2 vCPU) using [`bench/bench.py`](bench/bench.py) against official release binaries (`lumiere 0.1.0`, `hunk 0.25.0`, `plannotator-tui 0.12.0` backed by `diffs-rs`, `lumen 2.32.0`). Parentheses show each tool relative to Lumiere (lower is better):
 
 | Metric | **Lumiere** | **hunk** | **plannotator-tui** (`diffs-rs`) | **lumen** |
 | --- | ---: | ---: | ---: | ---: |
-| Start (`small`, 3 files) | **29.0 ms** | 481.5 ms | 51.2 ms | 577.9 ms |
-| Peak RAM (`small`) | **12.2 MB** | 211.9 MB | 16.5 MB | 41.1 MB |
-| Start (`many`, 300 files) | **24.6 ms** | 851.5 ms | 239.8 ms | 656.0 ms |
-| First key / next file (`many`) | 7.2 / 4.6 ms | 85.9 / 14.2 ms | **2.4 / 1.0 ms** | 5.5 / 5.8 ms |
-| Start (`large`, 360k-line / 5.3 MiB file) | **22.6 ms** | 516.4 ms | 151.8 ms | 755.5 ms |
-| Open 360k-line file / whole-file view | **168.7 / 111.5 ms** | *skipped¹* | *streamed / capped²* | 5,590 ms / *n/a* |
-| Peak RAM (`large`) | 155.7 MB | 197.6 MB¹ | **16.7 MB²** | 1,109.5 MB |
-| Start (`ignored`, 8k `.venv` dirs, `--watch`) | **25.2 ms** | 515.1 ms | *no watch* | 1,004.5 ms |
+| Start (`small`, 3 files) | **29.0 ms** | 481.5 ms *(16.6×)* | 51.2 ms *(1.8×)* | 577.9 ms *(19.9×)* |
+| Peak RAM (`small`) | **12.2 MB** | 211.9 MB *(17.4×)* | 16.5 MB *(1.4×)* | 41.1 MB *(3.4×)* |
+| Start (`many`, 300 files) | **24.6 ms** | 851.5 ms *(34.6×)* | 239.8 ms *(9.7×)* | 656.0 ms *(26.7×)* |
+| First key / next file (`many`) | 7.2 / 4.6 ms | 85.9 / 14.2 ms *(11.9× / 3.1×)* | **2.4 / 1.0 ms** *(0.3× / 0.2×)* | 5.5 / 5.8 ms *(0.8× / 1.3×)* |
+| Start (`large`, 360k-line / 5.3 MiB file) | **22.6 ms** | 516.4 ms *(22.8×)* | 151.8 ms *(6.7×)* | 755.5 ms *(33.4×)* |
+| Open 360k-line file / whole-file view | **168.7 / 111.5 ms** | *skipped¹* | *streamed / capped²* | 5,590 ms *(33.1×)* / *n/a* |
+| Peak RAM (`large`) | 155.7 MB | 197.6 MB¹ *(1.3×)* | **16.7 MB²** *(0.1×)* | 1,109.5 MB *(7.1×)* |
+| Start (`ignored`, 8k `.venv` dirs, `--watch`) | **25.2 ms** | 515.1 ms *(20.4×)* | *no watch* | 1,004.5 ms *(39.9×)* |
 | Idle CPU (`--watch`, 4 s) | **0.0%** | 0.3% | *no watch* | 1.5%³ |
 
 <sup>¹ `hunk` prints "File too large to render automatically." on the 5.3 MiB file. ² `plannotator-tui` streams only patch hunks (very low RAM) and caps whole-file view at 5 MiB. ³ `lumen 2.32.0` reloads continuously on `Access` events in watch mode. Run `bench/bench.py` yourself to reproduce on your hardware — full 16-metric table in [docs/src/comparison.md](docs/src/comparison.md).</sup>
