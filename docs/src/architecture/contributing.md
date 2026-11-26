@@ -50,5 +50,7 @@ Merging changes to `docs/**` on `main` automatically builds and deploys the site
 ## Continuous Integration & Releases
 
 - **`.github/workflows/ci.yml`** runs `cargo fmt --check`, `cargo clippy -- -D warnings` (default and `--no-default-features`), `cargo test` on both `ubuntu-latest` and `macos-latest`, and an MSRV check on Rust `1.89`.
+- **`.github/workflows/lint-pr-title.yml`** enforces Conventional Commit PR titles so Release Drafter can classify changes automatically.
 - **`.github/workflows/docs.yml`** builds the mdBook site on PRs and deploys to GitHub Pages on `main`.
-- **`.github/workflows/release.yml`** builds and publishes checksummed tarballs for Linux (`x86_64`) and macOS (`aarch64`, `x86_64`) whenever a `v*` tag is pushed.
+- **`.github/workflows/release-drafter.yml`** (configured in `.github/release-drafter.yml`) auto-labels PRs (`breaking`, `feature`, `fix`, `chore`) and maintains a draft GitHub Release on `main` with `0.x` semantic versioning (`breaking` and `feat` bump minor; `fix` and `chore` bump patch).
+- **`.github/workflows/release.yml`** triggers when a GitHub Release is published (or via `workflow_dispatch` with a release tag), builds Linux (`x86_64`) and macOS (`aarch64`, `x86_64`) binaries with `LUMIERE_VERSION` stamped from the tag, and uploads checksummed tarballs to that release.

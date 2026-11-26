@@ -31,10 +31,15 @@ pub enum ViewMode {
     Full,
 }
 
+const VERSION: &str = match option_env!("LUMIERE_VERSION") {
+    Some(version) if !version.is_empty() => version,
+    _ => env!("CARGO_PKG_VERSION"),
+};
+
 #[derive(Parser)]
 #[command(name = "lumiere")]
 #[command(about = "Review diffs in the terminal and discuss them with your coding agent", long_about = None)]
-#[command(version)]
+#[command(version = VERSION)]
 pub struct Cli {
     /// Path to configuration file eg: ./path/to/lumiere.config.json
     #[arg(long)]
@@ -237,5 +242,12 @@ mod tests {
             target_of(&["lumiere", "diff", "--agent-block", "block:1"]),
             Some("block:1".to_string())
         );
+    }
+
+    #[test]
+    fn test_cli_version_matches_resolved_version() {
+        use clap::CommandFactory;
+        assert_eq!(Cli::command().get_version(), Some(VERSION));
+        assert!(!VERSION.is_empty());
     }
 }
