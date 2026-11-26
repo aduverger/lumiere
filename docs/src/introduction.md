@@ -35,7 +35,7 @@
 
 ## Where to go next
 
-- New to Lumiere? Start with [Installation](getting-started/installation.md) and the [Quick Start](getting-started/quick-start.md).
+- New to Lumiere? Start with [Installation](getting-started/installation.md), the [Quick Start](getting-started/quick-start.md), or see how it compares to other tools in [Comparison](comparison.md).
 - Want to connect your coding agent? Read [Review Threads](guide/review-threads.md) and [Coding Agents & Rex Integration](guide/coding-agents.md).
 - Looking for flags, themes, or keys? Jump to the [CLI Reference](reference/cli.md), [Configuration & Themes](reference/configuration.md), or [Keybindings](reference/keybindings.md).
 - Curious how it is built? Read [Architecture & Core Primitives](architecture/overview.md).
