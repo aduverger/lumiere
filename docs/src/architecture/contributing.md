@@ -50,6 +50,8 @@ Merging changes to `docs/**` on `main` automatically builds and deploys the site
 ## Continuous Integration & Releases
 
 - **`.github/workflows/ci.yml`** runs `cargo fmt --check`, `cargo clippy -- -D warnings` (default and `--no-default-features`), `cargo test` on both `ubuntu-latest` and `macos-latest`, and an MSRV check on Rust `1.89`.
+- **`.github/workflows/dependency-review.yml`** runs GitHub Dependency Review on pull requests (failing on moderate or higher advisories).
+- **`.github/workflows/security-audit.yml`** runs a daily scheduled RustSec audit (`cargo-audit`) across all dependencies in `Cargo.lock` and opens issues on new advisories.
 - **`.github/workflows/lint-pr-title.yml`** enforces Conventional Commit PR titles so Release Drafter can classify changes automatically.
 - **`.github/workflows/docs.yml`** builds the mdBook site on PRs and deploys to GitHub Pages on `main`.
 - **`.github/workflows/release-drafter.yml`** (configured in `.github/release-drafter.yml`) auto-labels PRs (`breaking`, `feature`, `fix`, `chore`) and maintains a draft GitHub Release on `main` with `0.x` semantic versioning (`breaking` and `feat` bump minor; `fix` and `chore` bump patch).
