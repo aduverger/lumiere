@@ -8,8 +8,8 @@ use ratatui::layout::Rect;
 use crate::diff::github::{mark_file_as_viewed_async, unmark_file_as_viewed_async};
 use crate::diff::watcher::setup_watcher;
 use crate::diff::{
-    hunk_comment_lines, hunk_lines_on, load_single_commit_diffs, DiffFullscreen, DiffLine,
-    DiffOptions, DiffPanelFocus,
+    hunk_comment_lines, hunk_lines_on, load_lazy_single_commit_diffs, DiffFullscreen, DiffLine,
+    DiffPanelFocus,
 };
 use crate::review::agent::{AgentLink, AgentRequest, AgentTarget};
 use crate::review::{AnnotationTarget, Thread};
@@ -26,7 +26,6 @@ use crate::ui::state::{
 };
 use crate::ui::views::{truncate_path, FilePickerItem, Modal, ModalContent, ModalResult};
 use crate::ui::{App, LoopAction, Picker};
-use crate::vcs::VcsBackend;
 
 pub fn count_of(count: usize, noun: &str) -> String {
     format!("{count} {noun}{}", if count == 1 { "" } else { "s" })
@@ -143,28 +142,6 @@ fn find_sbs_index_for_line(
     side_by_side
         .iter()
         .position(|dl| dl.line_number(panel) == Some(line_num))
-}
-
-fn navigate_stacked_commit(
-    state: &mut AppState,
-    new_index: usize,
-    options: &DiffOptions,
-    backend: &dyn VcsBackend,
-) -> bool {
-    if new_index >= state.stacked_commits.len() {
-        return false;
-    }
-    state.save_stacked_viewed_files();
-    state.current_commit_index = new_index;
-    if let Some(commit) = state.stacked_commits.get(new_index) {
-        let file_diffs = load_single_commit_diffs(&commit.commit_id, &options.file, backend);
-        state.reload(file_diffs, None);
-        state.refresh_branch(backend);
-        state.load_stacked_viewed_files();
-        true
-    } else {
-        false
-    }
 }
 
 fn format_annotation_preview(thread: &Thread) -> String {
@@ -599,10 +576,14 @@ impl<'a> App<'a> {
                 });
             }
             ModalResult::AnnotationJump { annotation_id } => {
+                self.state
+                    .ensure_thread_file_loaded(&annotation_id, self.backend);
                 show_thread(&mut self.state, &annotation_id);
                 self.active_modal = None;
             }
             ModalResult::AnnotationEdit { annotation_id } => {
+                self.state
+                    .ensure_thread_file_loaded(&annotation_id, self.backend);
                 if show_thread(&mut self.state, &annotation_id) {
                     self.annotation_editor = self
                         .state
@@ -686,6 +667,7 @@ impl<'a> App<'a> {
                                         .flatten();
                                     self.state.watching = watcher.is_some();
                                     (self.watch_handle, self.watch_rx) = watcher.unzip();
+                                    self.start_stats_job();
                                 }
                                 Err(error) => {
                                     self.active_modal =
@@ -729,9 +711,29 @@ impl<'a> App<'a> {
         LoopAction::Continue
     }
 
+    fn navigate_stacked_commit(&mut self, new_index: usize) -> bool {
+        if new_index >= self.state.stacked_commits.len() {
+            return false;
+        }
+        self.state.save_stacked_viewed_files();
+        self.state.current_commit_index = new_index;
+        if let Some(commit) = self.state.stacked_commits.get(new_index).cloned() {
+            let (file_diffs, diff_source) =
+                load_lazy_single_commit_diffs(&commit.commit_id, &self.options.file, self.backend);
+            self.state
+                .reload_lazy(file_diffs, diff_source, None, self.backend);
+            self.state.refresh_branch(self.backend);
+            self.state.load_stacked_viewed_files();
+            self.start_stats_job();
+            true
+        } else {
+            false
+        }
+    }
+
     fn focus_file_in_sidebar(&mut self, file_index: usize, term_height: u16) {
         self.state.reveal_file(file_index);
-        self.state.select_file(file_index);
+        self.state.select_file_loaded(file_index, self.backend);
         if let Some(idx) = self
             .state
             .sidebar_visible_index_for_file(self.state.current_file)
@@ -812,23 +814,13 @@ impl<'a> App<'a> {
                 if self.state.stacked_mode && mouse.row < header_height {
                     if mouse.column < 4 && self.state.current_commit_index > 0 {
                         let new_index = self.state.current_commit_index - 1;
-                        navigate_stacked_commit(
-                            &mut self.state,
-                            new_index,
-                            &self.options,
-                            self.backend,
-                        );
+                        self.navigate_stacked_commit(new_index);
                     } else if mouse.column >= term_size.width.saturating_sub(4)
                         && self.state.current_commit_index
                             < self.state.stacked_commits.len().saturating_sub(1)
                     {
                         let new_index = self.state.current_commit_index + 1;
-                        navigate_stacked_commit(
-                            &mut self.state,
-                            new_index,
-                            &self.options,
-                            self.backend,
-                        );
+                        self.navigate_stacked_commit(new_index);
                     }
                 } else if self.state.show_sidebar
                     && mouse.column < sidebar_width
@@ -843,7 +835,7 @@ impl<'a> App<'a> {
                         match item {
                             SidebarItem::File { file_index, .. } => {
                                 self.state.focused_panel = FocusedPanel::DiffView;
-                                self.state.select_file(file_index);
+                                self.state.select_file_loaded(file_index, self.backend);
                             }
                             SidebarItem::Directory { path, .. } => {
                                 self.state.focused_panel = FocusedPanel::Sidebar;
@@ -1131,13 +1123,13 @@ impl<'a> App<'a> {
                         < self.state.stacked_commits.len().saturating_sub(1)
                 {
                     let next = self.state.current_commit_index + 1;
-                    navigate_stacked_commit(&mut self.state, next, &self.options, self.backend);
+                    self.navigate_stacked_commit(next);
                 }
             }
             KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.state.stacked_mode && self.state.current_commit_index > 0 {
                     let prev = self.state.current_commit_index - 1;
-                    navigate_stacked_commit(&mut self.state, prev, &self.options, self.backend);
+                    self.navigate_stacked_commit(prev);
                 }
             }
             KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1290,7 +1282,7 @@ impl<'a> App<'a> {
                     {
                         match item {
                             SidebarItem::File { file_index, .. } => {
-                                self.state.select_file(file_index);
+                                self.state.select_file_loaded(file_index, self.backend);
                                 self.state.focused_panel = FocusedPanel::DiffView;
                             }
                             SidebarItem::Directory { path, .. } => {
@@ -1454,6 +1446,7 @@ impl<'a> App<'a> {
                 self.state.mark_search_dirty();
             }
             KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.state.ensure_all_loaded(self.backend);
                 let gs = GlobalSearchState::build(&self.state.file_diffs, &self.state.settings);
                 self.active_modal = Some(Modal::global_search("Search", gs));
             }
@@ -1499,7 +1492,7 @@ impl<'a> App<'a> {
         };
         if let Some((visible_idx, file_index)) = found {
             self.state.sidebar_selected = visible_idx;
-            self.state.select_file(file_index);
+            self.state.select_file_loaded(file_index, self.backend);
             ensure_sidebar_visible(&mut self.state, term_height.saturating_sub(5) as usize);
         }
     }
@@ -1579,7 +1572,7 @@ impl<'a> App<'a> {
                     });
                 if let Some((idx, file_idx)) = next_unviewed {
                     self.state.sidebar_selected = idx;
-                    self.state.select_file(file_idx);
+                    self.state.select_file_loaded(file_idx, self.backend);
                     ensure_sidebar_visible(&mut self.state, term_height.saturating_sub(5) as usize);
                 }
             }
@@ -1686,7 +1679,7 @@ fn generate_file_anchor(filename: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diff::{FileDiff, FileStatus};
+    use crate::diff::FileDiff;
 
     #[test]
     fn test_an_editor_value_is_split_into_its_program_and_arguments() {
@@ -1701,13 +1694,11 @@ mod tests {
 
     fn state_with_file(old_content: &str, new_content: &str) -> AppState {
         AppState::new(
-            vec![FileDiff {
-                filename: "a.rs".to_string(),
-                old_content: old_content.to_string(),
-                new_content: new_content.to_string(),
-                status: FileStatus::Modified,
-                is_binary: false,
-            }],
+            vec![FileDiff::from_contents(
+                "a.rs".to_string(),
+                old_content.to_string(),
+                new_content.to_string(),
+            )],
             None,
         )
     }
@@ -1853,13 +1844,11 @@ mod tests {
     fn test_showing_a_thread_puts_its_first_line_on_the_top_row() {
         let numbered_lines: String = (1..=80).map(|line| format!("line {line}\n")).collect();
         let mut state = AppState::new(
-            vec![FileDiff {
-                filename: "a.rs".to_string(),
-                old_content: String::new(),
-                new_content: numbered_lines,
-                status: FileStatus::Added,
-                is_binary: false,
-            }],
+            vec![FileDiff::from_contents(
+                "a.rs".to_string(),
+                String::new(),
+                numbered_lines,
+            )],
             None,
         );
         let on_line = |line: usize| AnnotationTarget::LineRange {

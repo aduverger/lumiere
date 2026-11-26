@@ -6,8 +6,9 @@ use tree_sitter::{Parser, Tree};
 use crate::diff::context::get_language_context;
 use crate::diff::highlight::{too_large_to_parse, FileHighlighter};
 use crate::diff::{
-    count_added_removed, get_current_branch, ComputedDiff, DiffFullscreen, DiffLine, DiffOptions,
-    DiffPanelFocus, DiffViewSettings, FileDiff, FileStatus, LineStats,
+    count_added_removed, get_current_branch, load_all_file_contents, load_file_content,
+    ComputedDiff, DiffFullscreen, DiffLine, DiffOptions, DiffPanelFocus, DiffSource,
+    DiffViewSettings, FileDiff, FileStatus, LineStats,
 };
 use crate::review::store::{StoreStamp, ThreadStore};
 use crate::review::{anchor_text_for, refresh_anchors, AnnotationTarget, Comment, Thread};
@@ -289,6 +290,8 @@ pub struct AppState {
     pub editor_rect: Option<ratatui::layout::Rect>,
     pub total_added: usize,
     pub total_removed: usize,
+    pub stats_ready: bool,
+    pub diff_source: DiffSource,
 }
 
 fn compute_total_line_stats(file_diffs: &[FileDiff]) -> (usize, usize) {
@@ -305,6 +308,15 @@ fn compute_total_line_stats(file_diffs: &[FileDiff]) -> (usize, usize) {
     (added, removed)
 }
 
+fn initial_total_stats(file_diffs: &[FileDiff], diff_source: &DiffSource) -> (usize, usize, bool) {
+    if matches!(diff_source, DiffSource::Eager) {
+        let (added, removed) = compute_total_line_stats(file_diffs);
+        (added, removed, true)
+    } else {
+        (0, 0, file_diffs.is_empty())
+    }
+}
+
 impl AppState {
     pub fn new(file_diffs: Vec<FileDiff>, focus_file: Option<&str>) -> Self {
         Self::new_with_settings(file_diffs, focus_file, DiffViewSettings::default())
@@ -315,6 +327,17 @@ impl AppState {
         focus_file: Option<&str>,
         settings: DiffViewSettings,
     ) -> Self {
+        Self::build_state(file_diffs, focus_file, settings, DiffSource::Eager)
+    }
+
+    fn build_state(
+        file_diffs: Vec<FileDiff>,
+        focus_file: Option<&str>,
+        settings: DiffViewSettings,
+        diff_source: DiffSource,
+    ) -> Self {
+        let (total_added, total_removed, stats_ready) =
+            initial_total_stats(&file_diffs, &diff_source);
         let sidebar_items = build_file_tree(&file_diffs);
         let collapsed_dirs = HashSet::new();
         let sidebar_visible = build_sidebar_visible_indices(&sidebar_items, &collapsed_dirs);
@@ -336,7 +359,6 @@ impl AppState {
         } else {
             Self::find_first_file(&sidebar_items, &sidebar_visible)
         };
-        let (total_added, total_removed) = compute_total_line_stats(&file_diffs);
 
         let mut state = Self {
             file_diffs,
@@ -385,8 +407,10 @@ impl AppState {
             editor_rect: None,
             total_added,
             total_removed,
+            stats_ready,
+            diff_source,
         };
-        if current_file < state.file_diffs.len() {
+        if current_file < state.file_diffs.len() && state.file_diffs[current_file].loaded {
             state.select_file(current_file);
         }
         state
@@ -398,21 +422,95 @@ impl AppState {
         backend: &dyn VcsBackend,
         focus_file: Option<&str>,
     ) -> Self {
+        Self::for_repo_lazy(options, file_diffs, DiffSource::Eager, backend, focus_file)
+    }
+
+    pub fn for_repo_lazy(
+        options: &DiffOptions,
+        file_diffs: Vec<FileDiff>,
+        diff_source: DiffSource,
+        backend: &dyn VcsBackend,
+        focus_file: Option<&str>,
+    ) -> Self {
         let settings = DiffViewSettings {
             wrap: options.wrap,
             hunks_only: options.hunks_only,
             ..DiffViewSettings::default()
         };
-        let mut state = Self::new_with_settings(file_diffs, focus_file, settings);
+        let mut state = Self::build_state(file_diffs, focus_file, settings, diff_source);
         state.set_vcs_name(backend.name());
         state.refresh_branch(backend);
         state.set_diff_reference(options.reference.as_ref().map(ToString::to_string));
+        if state.current_file < state.file_diffs.len()
+            && !state.file_diffs[state.current_file].loaded
+        {
+            let current = state.current_file;
+            state.select_file_loaded(current, backend);
+        }
         state
+    }
+
+    fn sync_sidebar_statuses(&mut self) {
+        for item in &mut self.sidebar_items {
+            if let SidebarItem::File {
+                file_index, status, ..
+            } = item
+            {
+                if let Some(diff) = self.file_diffs.get(*file_index) {
+                    *status = diff.status;
+                }
+            }
+        }
+    }
+
+    pub fn ensure_file_loaded(&mut self, file_index: usize, backend: &dyn VcsBackend) {
+        let Some(diff) = self.file_diffs.get_mut(file_index) else {
+            return;
+        };
+        if load_file_content(diff, &self.diff_source, backend) {
+            self.sync_sidebar_statuses();
+        }
+    }
+
+    pub fn ensure_all_loaded(&mut self, backend: &dyn VcsBackend) {
+        load_all_file_contents(&mut self.file_diffs, &self.diff_source, backend);
+        self.sync_sidebar_statuses();
+    }
+
+    pub fn ensure_loaded_for_threads(&mut self, backend: &dyn VcsBackend) {
+        if self.threads.is_empty() || matches!(self.diff_source, DiffSource::Eager) {
+            return;
+        }
+        let thread_files: HashSet<String> =
+            self.threads.iter().map(|t| t.filename.clone()).collect();
+        let indices: Vec<usize> = self
+            .file_diffs
+            .iter()
+            .enumerate()
+            .filter_map(|(i, d)| (!d.loaded && thread_files.contains(&d.filename)).then_some(i))
+            .collect();
+        for idx in indices {
+            self.ensure_file_loaded(idx, backend);
+        }
+    }
+
+    pub fn select_file_loaded(&mut self, file_index: usize, backend: &dyn VcsBackend) {
+        self.ensure_file_loaded(file_index, backend);
+        self.select_file(file_index);
+    }
+
+    pub fn ensure_thread_file_loaded(&mut self, thread_id: &str, backend: &dyn VcsBackend) {
+        let Some(filename) = self.thread_by_id(thread_id).map(|t| t.filename.as_str()) else {
+            return;
+        };
+        if let Some(idx) = self.file_diffs.iter().position(|f| f.filename == filename) {
+            self.ensure_file_loaded(idx, backend);
+        }
     }
 
     pub fn attach_thread_store(&mut self, backend: &dyn VcsBackend) {
         match ThreadStore::for_repository(backend.working_tree_root()) {
-            Ok(store) => self.open_thread_store(store),
+            Ok(store) => self.open_thread_store_inner(store, Some(backend)),
             Err(error) => self.thread_store_error = Some(error),
         }
     }
@@ -879,6 +977,27 @@ impl AppState {
     }
 
     pub fn reload(&mut self, file_diffs: Vec<FileDiff>, changed_files: Option<&HashSet<String>>) {
+        self.diff_source = DiffSource::Eager;
+        self.reload_inner(file_diffs, changed_files, None);
+    }
+
+    pub fn reload_lazy(
+        &mut self,
+        file_diffs: Vec<FileDiff>,
+        diff_source: DiffSource,
+        changed_files: Option<&HashSet<String>>,
+        backend: &dyn VcsBackend,
+    ) {
+        self.diff_source = diff_source;
+        self.reload_inner(file_diffs, changed_files, Some(backend));
+    }
+
+    fn reload_inner(
+        &mut self,
+        file_diffs: Vec<FileDiff>,
+        changed_files: Option<&HashSet<String>>,
+        backend: Option<&dyn VcsBackend>,
+    ) {
         let old_filename = self
             .file_diffs
             .get(self.current_file)
@@ -900,9 +1019,8 @@ impl AppState {
         }
 
         self.file_diffs = file_diffs;
-        let (total_added, total_removed) = compute_total_line_stats(&self.file_diffs);
-        self.total_added = total_added;
-        self.total_removed = total_removed;
+        (self.total_added, self.total_removed, self.stats_ready) =
+            initial_total_stats(&self.file_diffs, &self.diff_source);
         self.sidebar_items = build_file_tree(&self.file_diffs);
 
         let filenames: HashSet<&str> = self
@@ -930,6 +1048,14 @@ impl AppState {
         }
         if self.current_file >= self.file_diffs.len() && !self.file_diffs.is_empty() {
             self.current_file = self.file_diffs.len() - 1;
+        }
+
+        if let Some(backend) = backend {
+            if !self.file_diffs.is_empty() {
+                let current = self.current_file;
+                self.ensure_file_loaded(current, backend);
+            }
+            self.ensure_loaded_for_threads(backend);
         }
 
         self.rebuild_sidebar_visible();
@@ -972,12 +1098,19 @@ impl AppState {
     }
 
     pub fn open_thread_store(&mut self, store: ThreadStore) {
+        self.open_thread_store_inner(store, None);
+    }
+
+    fn open_thread_store_inner(&mut self, store: ThreadStore, backend: Option<&dyn VcsBackend>) {
         let stamp = store.stamp();
         match store.load() {
             Ok(threads) => {
                 self.threads = threads;
                 self.thread_store_stamp = stamp;
                 self.thread_store = Some(store);
+                if let Some(backend) = backend {
+                    self.ensure_loaded_for_threads(backend);
+                }
                 self.refresh_thread_anchors();
             }
             Err(error) => self.thread_store_error = Some(error),
@@ -1245,13 +1378,7 @@ mod tests {
     use super::*;
 
     fn make_file_diff(filename: &str) -> FileDiff {
-        FileDiff {
-            filename: filename.to_string(),
-            old_content: String::new(),
-            new_content: "content\n".to_string(),
-            status: FileStatus::Added,
-            is_binary: false,
-        }
+        FileDiff::from_contents(filename.to_string(), String::new(), "content\n".to_string())
     }
 
     fn line_target(line: usize) -> AnnotationTarget {
@@ -1360,13 +1487,11 @@ mod tests {
                 .collect()
         };
         let mut state = AppState::new(
-            vec![FileDiff {
-                filename: "a.rs".to_string(),
-                old_content: numbered(0),
-                new_content: numbered(50),
-                status: FileStatus::Modified,
-                is_binary: false,
-            }],
+            vec![FileDiff::from_contents(
+                "a.rs".to_string(),
+                numbered(0),
+                numbered(50),
+            )],
             None,
         );
         let top_line = |state: &AppState| {
@@ -1482,13 +1607,11 @@ mod tests {
     }
 
     fn python_file_diff(filename: &str, old_content: String) -> FileDiff {
-        FileDiff {
-            filename: filename.to_string(),
-            new_content: format!("{old_content}added = True\n"),
-            old_content,
-            status: FileStatus::Modified,
-            is_binary: false,
-        }
+        FileDiff::from_contents(
+            filename.to_string(),
+            old_content.clone(),
+            format!("{old_content}added = True\n"),
+        )
     }
 
     fn small_python_source() -> String {
@@ -1531,20 +1654,16 @@ mod tests {
 
     #[test]
     fn test_reload_clamps_focused_hunk_when_hunks_shrink() {
-        let two_hunks = FileDiff {
-            filename: "a.rs".to_string(),
-            old_content: "a1\n".to_string() + &"same\n".repeat(12) + "b1\n",
-            new_content: "a2\n".to_string() + &"same\n".repeat(12) + "b2\n",
-            status: FileStatus::Modified,
-            is_binary: false,
-        };
-        let one_hunk = FileDiff {
-            filename: "a.rs".to_string(),
-            old_content: "a1\n".to_string() + &"same\n".repeat(12) + "b1\n",
-            new_content: "a2\n".to_string() + &"same\n".repeat(12) + "b1\n",
-            status: FileStatus::Modified,
-            is_binary: false,
-        };
+        let two_hunks = FileDiff::from_contents(
+            "a.rs".to_string(),
+            "a1\n".to_string() + &"same\n".repeat(12) + "b1\n",
+            "a2\n".to_string() + &"same\n".repeat(12) + "b2\n",
+        );
+        let one_hunk = FileDiff::from_contents(
+            "a.rs".to_string(),
+            "a1\n".to_string() + &"same\n".repeat(12) + "b1\n",
+            "a2\n".to_string() + &"same\n".repeat(12) + "b1\n",
+        );
 
         let mut state = AppState::new(vec![two_hunks], None);
         assert_eq!(state.get_hunks().len(), 2);
@@ -1554,13 +1673,11 @@ mod tests {
         assert_eq!(state.get_hunks().len(), 1);
         assert_eq!(state.focused_hunk, Some(0));
 
-        let no_hunks = FileDiff {
-            filename: "a.rs".to_string(),
-            old_content: "same\n".to_string(),
-            new_content: "same\n".to_string(),
-            status: FileStatus::Modified,
-            is_binary: false,
-        };
+        let no_hunks = FileDiff::from_contents(
+            "a.rs".to_string(),
+            "same\n".to_string(),
+            "same\n".to_string(),
+        );
         state.reload(vec![no_hunks], None);
         assert_eq!(state.focused_hunk, None);
     }

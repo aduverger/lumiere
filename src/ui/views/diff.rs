@@ -1132,7 +1132,6 @@ mod tests {
     use ratatui::Terminal;
 
     use super::*;
-    use crate::diff::FileStatus;
     use crate::review::Comment;
 
     fn render_state(state: &mut AppState, width: u16, height: u16) -> (String, DiffRenderOutput) {
@@ -1211,13 +1210,11 @@ mod tests {
     #[test]
     fn test_render_diff_added_deleted_binary_and_empty_states() {
         let mut added = AppState::new(
-            vec![FileDiff {
-                filename: "new.rs".into(),
-                old_content: String::new(),
-                new_content: "fn hello() {}\n".into(),
-                status: FileStatus::Added,
-                is_binary: false,
-            }],
+            vec![FileDiff::from_contents(
+                "new.rs".into(),
+                String::new(),
+                "fn hello() {}\n".into(),
+            )],
             None,
         );
         let (added_screen, _) = render_state(&mut added, 100, 18);
@@ -1225,13 +1222,11 @@ mod tests {
         assert!(added_screen.contains("fn hello()"));
 
         let mut deleted = AppState::new(
-            vec![FileDiff {
-                filename: "old.rs".into(),
-                old_content: "fn goodbye() {}\n".into(),
-                new_content: String::new(),
-                status: FileStatus::Deleted,
-                is_binary: false,
-            }],
+            vec![FileDiff::from_contents(
+                "old.rs".into(),
+                "fn goodbye() {}\n".into(),
+                String::new(),
+            )],
             None,
         );
         let (deleted_screen, _) = render_state(&mut deleted, 100, 18);
@@ -1239,13 +1234,11 @@ mod tests {
         assert!(deleted_screen.contains("fn goodbye()"));
 
         let mut binary = AppState::new(
-            vec![FileDiff {
-                filename: "image.png".into(),
-                old_content: "\0PNG".into(),
-                new_content: "\0PNG2".into(),
-                status: FileStatus::Modified,
-                is_binary: true,
-            }],
+            vec![FileDiff::from_contents(
+                "image.png".into(),
+                "\0PNG".into(),
+                "\0PNG2".into(),
+            )],
             None,
         );
         let (binary_screen, _) = render_state(&mut binary, 100, 18);

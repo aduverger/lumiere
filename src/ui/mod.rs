@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Once};
 use std::time::{Duration, Instant};
 
@@ -34,7 +34,8 @@ use crate::diff::github::{
 };
 use crate::diff::watcher::{setup_watcher, WatchEvent, WatchHandle};
 use crate::diff::{
-    load_file_diffs, load_single_commit_diffs, validate_reference, DiffOptions, FileDiff,
+    load_lazy_file_diffs, load_lazy_single_commit_diffs, spawn_stats_job, validate_reference,
+    DiffOptions, DiffSource, FileDiff, StatsUpdate,
 };
 use crate::error::LumiereError;
 use crate::review::agent::{default_host, AgentLink, AgentRequest, AgentResponse, AgentWorker};
@@ -204,6 +205,9 @@ pub struct App<'a> {
     pub show_resolved_threads: bool,
     pub watch_handle: Option<WatchHandle>,
     pub watch_rx: Option<Receiver<WatchEvent>>,
+    pub stats_tx: Sender<StatsUpdate>,
+    pub stats_rx: Receiver<StatsUpdate>,
+    pub stats_generation: u64,
     pub review_roots: Vec<PathBuf>,
     pub agent: AgentLink,
     pub agent_worker: AgentWorker,
@@ -219,11 +223,18 @@ impl<'a> App<'a> {
         options: DiffOptions,
         pr_info: Option<PrInfo>,
         file_diffs: Vec<FileDiff>,
+        diff_source: DiffSource,
         stacked_commits: Option<Vec<StackedCommitInfo>>,
         backend: &'a dyn VcsBackend,
         workspace_session: Option<WorkspaceSession<'a>>,
     ) -> Self {
-        let mut state = AppState::for_repo(&options, file_diffs, backend, options.focus.as_deref());
+        let mut state = AppState::for_repo_lazy(
+            &options,
+            file_diffs,
+            diff_source,
+            backend,
+            options.focus.as_deref(),
+        );
         state.attach_thread_store(backend);
         if let Some(pr) = &pr_info {
             state.set_diff_reference(Some(format!(
@@ -282,7 +293,8 @@ impl<'a> App<'a> {
             review_roots: review_roots.clone(),
         });
 
-        Self {
+        let (stats_tx, stats_rx) = mpsc::channel();
+        let mut app = Self {
             state,
             options,
             pr_info,
@@ -297,6 +309,9 @@ impl<'a> App<'a> {
             show_resolved_threads: false,
             watch_handle,
             watch_rx,
+            stats_tx,
+            stats_rx,
+            stats_generation: 0,
             review_roots,
             agent,
             agent_worker,
@@ -305,7 +320,23 @@ impl<'a> App<'a> {
             notice: None,
             noticed_file: None,
             dirty: true,
+        };
+        app.start_stats_job();
+        app
+    }
+
+    pub fn start_stats_job(&mut self) {
+        self.stats_generation = self.stats_generation.wrapping_add(1);
+        if self.state.stats_ready {
+            return;
         }
+        spawn_stats_job(
+            self.stats_generation,
+            self.backend.working_tree_root().to_path_buf(),
+            &self.state.diff_source,
+            self.options.file.clone(),
+            self.stats_tx.clone(),
+        );
     }
 
     pub fn queued_total(&self) -> usize {
@@ -433,6 +464,15 @@ impl<'a> App<'a> {
             }
         }
 
+        while let Ok(update) = self.stats_rx.try_recv() {
+            if update.generation == self.stats_generation {
+                self.state.total_added = update.added;
+                self.state.total_removed = update.removed;
+                self.state.stats_ready = true;
+                self.dirty = true;
+            }
+        }
+
         if let Some(ref rx) = self.watch_rx {
             while let Ok(event) = rx.try_recv() {
                 self.state.needs_reload = true;
@@ -461,21 +501,33 @@ impl<'a> App<'a> {
             } else if self.state.stacked_mode {
                 if let Some(commit) = self.state.current_commit().cloned() {
                     self.state.save_stacked_viewed_files();
-                    let file_diffs = load_single_commit_diffs(
+                    let (file_diffs, diff_source) = load_lazy_single_commit_diffs(
                         &commit.commit_id,
                         &self.options.file,
                         self.backend,
                     );
-                    self.state.reload(file_diffs, changed_files.as_ref());
+                    self.state.reload_lazy(
+                        file_diffs,
+                        diff_source,
+                        changed_files.as_ref(),
+                        self.backend,
+                    );
                     self.state.refresh_branch(self.backend);
                     self.state.load_stacked_viewed_files();
+                    self.start_stats_job();
                 } else {
                     self.state.needs_reload = false;
                 }
             } else {
-                let file_diffs = load_file_diffs(&self.options, self.backend);
-                self.state.reload(file_diffs, changed_files.as_ref());
+                let (file_diffs, diff_source) = load_lazy_file_diffs(&self.options, self.backend);
+                self.state.reload_lazy(
+                    file_diffs,
+                    diff_source,
+                    changed_files.as_ref(),
+                    self.backend,
+                );
                 self.state.refresh_branch(self.backend);
+                self.start_stats_job();
             }
             self.dirty = true;
         }
@@ -743,9 +795,17 @@ pub fn run_workspace_diff_ui(
         .backend(initial_repository)
         .map_err(LumiereError::CommandError)?;
     theme::init(options.theme.as_deref());
-    let file_diffs = load_file_diffs(&options, backend);
+    let (file_diffs, diff_source) = load_lazy_file_diffs(&options, backend);
     let session = WorkspaceSession::new(workspace, initial_repository);
-    let app = App::new(options, None, file_diffs, None, backend, Some(session));
+    let app = App::new(
+        options,
+        None,
+        file_diffs,
+        diff_source,
+        None,
+        backend,
+        Some(session),
+    );
     run_loop(app)
 }
 
@@ -781,7 +841,15 @@ pub fn run_diff_ui(mut options: DiffOptions, backend: &dyn VcsBackend) -> Result
         let pr_info = fetch_pr_with_spinner(&pr_input, options.origin.as_deref())?;
         theme::init(options.theme.as_deref());
         let file_diffs = load_pr_file_diffs(&pr_info).map_err(LumiereError::CommandError)?;
-        let app = App::new(options, Some(pr_info), file_diffs, None, backend, None);
+        let app = App::new(
+            options,
+            Some(pr_info),
+            file_diffs,
+            DiffSource::Eager,
+            None,
+            backend,
+            None,
+        );
         return run_loop(app);
     }
 
@@ -821,14 +889,23 @@ pub fn run_diff_ui(mut options: DiffOptions, backend: &dyn VcsBackend) -> Result
         }
 
         theme::init(options.theme.as_deref());
-        let file_diffs = load_single_commit_diffs(&commits[0].commit_id, &options.file, backend);
-        let app = App::new(options, None, file_diffs, Some(commits), backend, None);
+        let (file_diffs, diff_source) =
+            load_lazy_single_commit_diffs(&commits[0].commit_id, &options.file, backend);
+        let app = App::new(
+            options,
+            None,
+            file_diffs,
+            diff_source,
+            Some(commits),
+            backend,
+            None,
+        );
         return run_loop(app);
     }
 
     theme::init(options.theme.as_deref());
-    let file_diffs = load_file_diffs(&options, backend);
-    let app = App::new(options, None, file_diffs, None, backend, None);
+    let (file_diffs, diff_source) = load_lazy_file_diffs(&options, backend);
+    let app = App::new(options, None, file_diffs, diff_source, None, backend, None);
     run_loop(app)
 }
 
@@ -910,11 +987,12 @@ mod tests {
             hunks_only: true,
             ..DiffOptions::default()
         };
-        let file_diffs = load_file_diffs(&options, backend);
-        let state = AppState::for_repo(&options, file_diffs, backend, None);
+        let (file_diffs, diff_source) = load_lazy_file_diffs(&options, backend);
+        let state = AppState::for_repo_lazy(&options, file_diffs, diff_source, backend, None);
         let review_roots = vec![root.to_path_buf()];
         let agent = AgentLink::new(Arc::clone(&host), root.to_path_buf());
         let agent_worker = AgentWorker::spawn(host);
+        let (stats_tx, stats_rx) = mpsc::channel();
         App {
             state,
             options,
@@ -930,6 +1008,9 @@ mod tests {
             show_resolved_threads: false,
             watch_handle: None,
             watch_rx: None,
+            stats_tx,
+            stats_rx,
+            stats_generation: 0,
             review_roots,
             agent,
             agent_worker,

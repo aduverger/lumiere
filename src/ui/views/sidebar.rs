@@ -130,20 +130,23 @@ pub fn render_sidebar(frame: &mut Frame, area: Rect, state: &AppState) {
     let border_style = Style::default().fg(t.ui.border_unfocused);
     let muted_style = Style::default().fg(t.ui.text_muted);
 
-    let title = Line::from(vec![
+    let mut title_spans = vec![
         Span::styled(" [1] Files ", title_style),
         Span::styled(format!("· {} ", state.file_diffs.len()), muted_style),
-        Span::styled(
+    ];
+    if state.stats_ready {
+        title_spans.push(Span::styled(
             format!("+{}", state.total_added),
             Style::default().fg(t.ui.stats_added),
-        ),
-        Span::raw(" "),
-        Span::styled(
+        ));
+        title_spans.push(Span::raw(" "));
+        title_spans.push(Span::styled(
             format!("-{}", state.total_removed),
             Style::default().fg(t.ui.stats_removed),
-        ),
-        Span::raw(" "),
-    ]);
+        ));
+        title_spans.push(Span::raw(" "));
+    }
+    let title = Line::from(title_spans);
 
     let para = Paragraph::new(lines)
         .style(Style::default().bg(bg))

@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::diff::{load_file_diffs, DiffOptions};
+use crate::diff::{load_lazy_file_diffs, DiffOptions};
 use crate::review::Workspace;
 use crate::ui::state::AppState;
 use crate::vcs::VcsBackend;
@@ -132,8 +132,9 @@ impl<'a> WorkspaceSession<'a> {
             }
             None => {
                 let backend = self.workspace.reviewable_backend(index, options)?;
-                let file_diffs = load_file_diffs(options, backend);
-                let mut review_state = AppState::for_repo(options, file_diffs, backend, None);
+                let (file_diffs, diff_source) = load_lazy_file_diffs(options, backend);
+                let mut review_state =
+                    AppState::for_repo_lazy(options, file_diffs, diff_source, backend, None);
                 review_state.attach_thread_store(backend);
                 (backend, review_state)
             }
@@ -188,7 +189,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::diff::{DiffPanelFocus, FileDiff, FileStatus};
+    use crate::diff::{DiffPanelFocus, FileDiff};
     use crate::review::AnnotationTarget;
     use crate::vcs::test_utils::git;
     use crate::vcs::CommitReference;
@@ -227,8 +228,8 @@ mod tests {
         options: &DiffOptions,
     ) -> (WorkspaceSession<'a>, AppState) {
         let backend = workspace.backend(0).expect("backend");
-        let file_diffs = load_file_diffs(options, backend);
-        let state = AppState::for_repo(options, file_diffs, backend, None);
+        let (file_diffs, diff_source) = load_lazy_file_diffs(options, backend);
+        let state = AppState::for_repo_lazy(options, file_diffs, diff_source, backend, None);
         (WorkspaceSession::new(workspace, 0), state)
     }
 
@@ -296,12 +297,8 @@ mod tests {
 
     #[test]
     fn test_export_groups_annotations_by_repository() {
-        let file_diff = |filename: &str| FileDiff {
-            filename: filename.to_string(),
-            old_content: String::new(),
-            new_content: "content\n".to_string(),
-            status: FileStatus::Added,
-            is_binary: false,
+        let file_diff = |filename: &str| {
+            FileDiff::from_contents(filename.to_string(), String::new(), "content\n".to_string())
         };
         let mut api_state = AppState::new(vec![file_diff("src/api.rs")], None);
         api_state.set_diff_reference(Some("origin/main...-".to_string()));

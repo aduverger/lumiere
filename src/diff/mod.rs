@@ -4,13 +4,16 @@ pub mod github;
 pub mod highlight;
 pub mod watcher;
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs;
 use std::ops::RangeInclusive;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
+use std::thread;
 
-use crate::vcs::{CommitReference, VcsBackend};
+use crate::vcs::{compute_git_diff_stats, CommitReference, VcsBackend};
 
+pub use crate::vcs::FileStatus;
 pub use algo::{
     compute_line_stats, compute_side_by_side, count_added_removed, find_hunk_starts,
     hide_unchanged_rows, hunk_comment_lines, hunk_lines_on, HUNK_CONTEXT_ROWS,
@@ -34,52 +37,39 @@ pub struct DiffOptions {
     pub agent_target: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FileStatus {
-    Added,
-    Modified,
-    Deleted,
-}
-
-impl FileStatus {
-    pub fn symbol(self) -> &'static str {
-        match self {
-            Self::Added => "A",
-            Self::Modified => "M",
-            Self::Deleted => "D",
-        }
-    }
-
-    pub fn from_contents(old: &str, new: &str) -> Self {
-        if old.is_empty() && !new.is_empty() {
-            Self::Added
-        } else if !old.is_empty() && new.is_empty() {
-            Self::Deleted
-        } else {
-            Self::Modified
-        }
-    }
-}
-
 pub struct FileDiff {
     pub filename: String,
     pub old_content: String,
     pub new_content: String,
     pub status: FileStatus,
     pub is_binary: bool,
+    pub loaded: bool,
 }
 
 impl FileDiff {
     pub fn from_contents(filename: String, old_content: String, new_content: String) -> Self {
-        let status = FileStatus::from_contents(&old_content, &new_content);
-        let is_binary = is_binary_content(&old_content) || is_binary_content(&new_content);
+        let mut diff = Self::pending(filename, FileStatus::Modified);
+        diff.apply_contents(old_content, new_content);
+        diff
+    }
+
+    pub fn pending(filename: String, status: FileStatus) -> Self {
         Self {
             filename,
-            old_content,
-            new_content,
+            old_content: String::new(),
+            new_content: String::new(),
             status,
-            is_binary,
+            is_binary: false,
+            loaded: false,
         }
+    }
+
+    pub fn apply_contents(&mut self, old_content: String, new_content: String) {
+        self.status = FileStatus::from_contents(&old_content, &new_content);
+        self.is_binary = is_binary_content(&old_content) || is_binary_content(&new_content);
+        self.old_content = old_content;
+        self.new_content = new_content;
+        self.loaded = true;
     }
 
     pub fn is_new_file(&self) -> bool {
@@ -99,6 +89,50 @@ impl FileDiff {
             requested
         }
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub enum DiffSource {
+    #[default]
+    Eager,
+    Vcs {
+        old_ref: String,
+        new_ref: Option<String>,
+    },
+}
+
+pub struct StatsUpdate {
+    pub generation: u64,
+    pub added: usize,
+    pub removed: usize,
+}
+
+pub fn spawn_stats_job(
+    generation: u64,
+    repo_root: PathBuf,
+    source: &DiffSource,
+    file_filter: Option<Vec<String>>,
+    tx: Sender<StatsUpdate>,
+) {
+    let DiffSource::Vcs { old_ref, new_ref } = source else {
+        return;
+    };
+    let old_ref = old_ref.clone();
+    let new_ref = new_ref.clone();
+    thread::spawn(move || {
+        if let Some((added, removed)) = compute_git_diff_stats(
+            &repo_root,
+            &old_ref,
+            new_ref.as_deref(),
+            file_filter.as_deref(),
+        ) {
+            let _ = tx.send(StatsUpdate {
+                generation,
+                added,
+                removed,
+            });
+        }
+    });
 }
 
 pub fn is_binary_content(content: &str) -> bool {
@@ -351,84 +385,212 @@ pub fn validate_reference(
     Ok(())
 }
 
-pub fn get_changed_files(options: &DiffOptions, backend: &dyn VcsBackend) -> Vec<String> {
-    let refs = DiffRefs::from_options(options, backend);
-
-    let files: Vec<String> = match refs {
-        DiffRefs::Single(sha) => backend.get_changed_files(&sha).unwrap_or_default(),
-        DiffRefs::Range { from, to } => backend
-            .get_range_changed_files(&from, &to)
+fn changed_files_with_status(
+    refs: &DiffRefs,
+    file_filter: Option<&[String]>,
+    backend: &dyn VcsBackend,
+) -> Vec<(String, FileStatus)> {
+    let files: Vec<(String, FileStatus)> = match refs {
+        DiffRefs::Single(sha) => backend
+            .get_changed_files_with_status(sha)
             .unwrap_or_default(),
-        DiffRefs::WorkingTree => backend.get_working_tree_changed_files().unwrap_or_default(),
+        DiffRefs::Range { from, to } => backend
+            .get_range_changed_files_with_status(from, to)
+            .unwrap_or_default(),
+        DiffRefs::WorkingTree => backend
+            .get_working_tree_changed_files_with_status()
+            .unwrap_or_default(),
         DiffRefs::RangeToWorkingTree { from } => {
             let head_ref = backend.working_copy_parent_ref();
             let range_files = backend
-                .get_range_changed_files(&from, head_ref)
+                .get_range_changed_files_with_status(from, head_ref)
                 .unwrap_or_default();
-            let wt_files = backend.get_working_tree_changed_files().unwrap_or_default();
-            let mut seen = HashSet::new();
-            range_files
-                .into_iter()
-                .chain(wt_files)
-                .filter(|f| seen.insert(f.clone()))
-                .collect()
+            let wt_files = backend
+                .get_working_tree_changed_files_with_status()
+                .unwrap_or_default();
+            let mut merged: Vec<(String, FileStatus)> = Vec::new();
+            let mut index_by_path: HashMap<String, usize> = HashMap::new();
+            for (path, status) in range_files {
+                index_by_path.insert(path.clone(), merged.len());
+                merged.push((path, status));
+            }
+            for (path, wt_status) in wt_files {
+                if let Some(&idx) = index_by_path.get(&path) {
+                    if wt_status == FileStatus::Deleted {
+                        merged[idx].1 = FileStatus::Deleted;
+                    }
+                } else {
+                    index_by_path.insert(path.clone(), merged.len());
+                    merged.push((path, wt_status));
+                }
+            }
+            merged
         }
     };
 
-    match &options.file {
-        Some(filter) => files.into_iter().filter(|f| filter.contains(f)).collect(),
+    match file_filter {
+        Some(filter) => files
+            .into_iter()
+            .filter(|(f, _)| filter.contains(f))
+            .collect(),
         None => files,
     }
 }
 
-pub fn load_file_diffs(options: &DiffOptions, backend: &dyn VcsBackend) -> Vec<FileDiff> {
+pub fn get_changed_files(options: &DiffOptions, backend: &dyn VcsBackend) -> Vec<String> {
     let refs = DiffRefs::from_options(options, backend);
-    let files = get_changed_files(options, backend);
-    let paths: Vec<&Path> = files.iter().map(Path::new).collect();
+    changed_files_with_status(&refs, options.file.as_deref(), backend)
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect()
+}
 
-    let old_ref = match &refs {
+fn vcs_source_for(refs: &DiffRefs, backend: &dyn VcsBackend) -> DiffSource {
+    let old_ref = match refs {
         DiffRefs::Single(sha) => backend.get_parent_ref_or_empty(sha).unwrap_or_default(),
         DiffRefs::Range { from, .. } | DiffRefs::RangeToWorkingTree { from } => from.clone(),
         DiffRefs::WorkingTree => backend.working_copy_parent_ref().to_string(),
     };
-    let old_contents: Vec<String> = if old_ref.is_empty() {
-        vec![String::new(); files.len()]
+    let new_ref = match refs {
+        DiffRefs::Single(sha) => Some(sha.clone()),
+        DiffRefs::Range { to, .. } => Some(to.clone()),
+        DiffRefs::WorkingTree | DiffRefs::RangeToWorkingTree { .. } => None,
+    };
+    DiffSource::Vcs { old_ref, new_ref }
+}
+
+pub fn load_file_content(
+    diff: &mut FileDiff,
+    source: &DiffSource,
+    backend: &dyn VcsBackend,
+) -> bool {
+    if diff.loaded {
+        return false;
+    }
+    let DiffSource::Vcs { old_ref, new_ref } = source else {
+        diff.loaded = true;
+        return false;
+    };
+    let path = Path::new(&diff.filename);
+    let old_content = if old_ref.is_empty() {
+        String::new()
     } else {
         backend
-            .get_files_content_at_ref(&old_ref, &paths)
+            .get_file_content_at_ref(old_ref, path)
+            .unwrap_or_default()
+    };
+    let new_content = match new_ref {
+        Some(to) => backend
+            .get_file_content_at_ref(to, path)
+            .unwrap_or_default(),
+        None => {
+            fs::read_to_string(backend.working_tree_root().join(&diff.filename)).unwrap_or_default()
+        }
+    };
+    diff.apply_contents(old_content, new_content);
+    true
+}
+
+pub fn load_all_file_contents(
+    diffs: &mut [FileDiff],
+    source: &DiffSource,
+    backend: &dyn VcsBackend,
+) {
+    let DiffSource::Vcs { old_ref, new_ref } = source else {
+        return;
+    };
+    let unloaded_indices: Vec<usize> = diffs
+        .iter()
+        .enumerate()
+        .filter_map(|(i, diff)| (!diff.loaded).then_some(i))
+        .collect();
+    if unloaded_indices.is_empty() {
+        return;
+    }
+    let paths: Vec<&Path> = unloaded_indices
+        .iter()
+        .map(|&i| Path::new(diffs[i].filename.as_str()))
+        .collect();
+    let old_contents: Vec<String> = if old_ref.is_empty() {
+        vec![String::new(); unloaded_indices.len()]
+    } else {
+        backend
+            .get_files_content_at_ref(old_ref, &paths)
             .into_iter()
             .map(Option::unwrap_or_default)
             .collect()
     };
-
-    let new_contents: Vec<String> = match &refs {
-        DiffRefs::Single(sha) => backend
-            .get_files_content_at_ref(sha, &paths)
-            .into_iter()
-            .map(Option::unwrap_or_default)
-            .collect(),
-        DiffRefs::Range { to, .. } => backend
+    let new_contents: Vec<String> = match new_ref {
+        Some(to) => backend
             .get_files_content_at_ref(to, &paths)
             .into_iter()
             .map(Option::unwrap_or_default)
             .collect(),
-        DiffRefs::WorkingTree | DiffRefs::RangeToWorkingTree { .. } => {
+        None => {
             let root = backend.working_tree_root();
-            files
+            unloaded_indices
                 .iter()
-                .map(|filename| fs::read_to_string(root.join(filename)).unwrap_or_default())
+                .map(|&i| fs::read_to_string(root.join(&diffs[i].filename)).unwrap_or_default())
                 .collect()
         }
     };
-
-    files
+    for ((idx, old_content), new_content) in unloaded_indices
         .into_iter()
         .zip(old_contents)
         .zip(new_contents)
-        .map(|((filename, old_content), new_content)| {
-            FileDiff::from_contents(filename, old_content, new_content)
-        })
-        .collect()
+    {
+        diffs[idx].apply_contents(old_content, new_content);
+    }
+}
+
+fn pending_diffs_for_refs(
+    refs: &DiffRefs,
+    file_filter: Option<&[String]>,
+    backend: &dyn VcsBackend,
+) -> (Vec<FileDiff>, DiffSource) {
+    let files = changed_files_with_status(refs, file_filter, backend);
+    let source = vcs_source_for(refs, backend);
+    let diffs = files
+        .into_iter()
+        .map(|(filename, status)| FileDiff::pending(filename, status))
+        .collect();
+    (diffs, source)
+}
+
+pub fn load_lazy_file_diffs(
+    options: &DiffOptions,
+    backend: &dyn VcsBackend,
+) -> (Vec<FileDiff>, DiffSource) {
+    if backend.name() != "git" {
+        return (load_file_diffs(options, backend), DiffSource::Eager);
+    }
+    let refs = DiffRefs::from_options(options, backend);
+    pending_diffs_for_refs(&refs, options.file.as_deref(), backend)
+}
+
+pub fn load_lazy_single_commit_diffs(
+    commit_id: &str,
+    file_filter: &Option<Vec<String>>,
+    backend: &dyn VcsBackend,
+) -> (Vec<FileDiff>, DiffSource) {
+    if backend.name() != "git" {
+        return (
+            load_single_commit_diffs(commit_id, file_filter, backend),
+            DiffSource::Eager,
+        );
+    }
+    pending_diffs_for_refs(
+        &DiffRefs::Single(commit_id.to_string()),
+        file_filter.as_deref(),
+        backend,
+    )
+}
+
+pub fn load_file_diffs(options: &DiffOptions, backend: &dyn VcsBackend) -> Vec<FileDiff> {
+    let refs = DiffRefs::from_options(options, backend);
+    let (mut diffs, source) = pending_diffs_for_refs(&refs, options.file.as_deref(), backend);
+    load_all_file_contents(&mut diffs, &source, backend);
+    diffs
 }
 
 pub fn load_single_commit_diffs(
@@ -436,39 +598,13 @@ pub fn load_single_commit_diffs(
     file_filter: &Option<Vec<String>>,
     backend: &dyn VcsBackend,
 ) -> Vec<FileDiff> {
-    let files = backend.get_changed_files(commit_id).unwrap_or_default();
-    let files: Vec<String> = match file_filter {
-        Some(filter) => files.into_iter().filter(|f| filter.contains(f)).collect(),
-        None => files,
-    };
-    let paths: Vec<&Path> = files.iter().map(Path::new).collect();
-    let parent_ref = backend
-        .get_parent_ref_or_empty(commit_id)
-        .unwrap_or_default();
-
-    let old_contents: Vec<String> = if parent_ref.is_empty() {
-        vec![String::new(); files.len()]
-    } else {
-        backend
-            .get_files_content_at_ref(&parent_ref, &paths)
-            .into_iter()
-            .map(Option::unwrap_or_default)
-            .collect()
-    };
-    let new_contents: Vec<String> = backend
-        .get_files_content_at_ref(commit_id, &paths)
-        .into_iter()
-        .map(Option::unwrap_or_default)
-        .collect();
-
-    files
-        .into_iter()
-        .zip(old_contents)
-        .zip(new_contents)
-        .map(|((filename, old_content), new_content)| {
-            FileDiff::from_contents(filename, old_content, new_content)
-        })
-        .collect()
+    let (mut diffs, source) = pending_diffs_for_refs(
+        &DiffRefs::Single(commit_id.to_string()),
+        file_filter.as_deref(),
+        backend,
+    );
+    load_all_file_contents(&mut diffs, &source, backend);
+    diffs
 }
 
 #[cfg(test)]
@@ -646,5 +782,69 @@ mod tests {
             ),
             Err("invalid reference: missing".to_string()),
         );
+    }
+
+    #[test]
+    fn test_lazy_file_diffs_defer_blob_reads_and_stats_match_eager() {
+        let dir = init_repo();
+        let p = dir.path();
+        fs::write(p.join("keep.rs"), "line1\nline2\n").unwrap();
+        fs::write(p.join("remove.rs"), "gone1\ngone2\n").unwrap();
+        git(p, &["add", "."]);
+        git(p, &["commit", "-m", "init"]);
+
+        fs::write(p.join("keep.rs"), "line1\nline2 edited\nline3\n").unwrap();
+        fs::remove_file(p.join("remove.rs")).unwrap();
+        fs::write(p.join("added.rs"), "new1\nnew2\nnew3\n").unwrap();
+
+        let backend = GitBackend::new(p).unwrap();
+        let options = options_for(None);
+        let (mut lazy_diffs, source) = load_lazy_file_diffs(&options, &backend);
+
+        assert_eq!(lazy_diffs.len(), 3);
+        assert!(lazy_diffs
+            .iter()
+            .all(|d| !d.loaded && d.old_content.is_empty() && d.new_content.is_empty()));
+        let status_of = |diffs: &[FileDiff], name: &str| {
+            diffs.iter().find(|d| d.filename == name).unwrap().status
+        };
+        assert_eq!(status_of(&lazy_diffs, "keep.rs"), FileStatus::Modified);
+        assert_eq!(status_of(&lazy_diffs, "remove.rs"), FileStatus::Deleted);
+        assert_eq!(status_of(&lazy_diffs, "added.rs"), FileStatus::Added);
+
+        let keep_idx = lazy_diffs
+            .iter()
+            .position(|d| d.filename == "keep.rs")
+            .unwrap();
+        assert!(load_file_content(
+            &mut lazy_diffs[keep_idx],
+            &source,
+            &backend
+        ));
+        assert!(!load_file_content(
+            &mut lazy_diffs[keep_idx],
+            &source,
+            &backend
+        ));
+        assert!(lazy_diffs[keep_idx].loaded);
+        assert_eq!(lazy_diffs[keep_idx].old_content, "line1\nline2\n");
+        assert_eq!(
+            lazy_diffs[keep_idx].new_content,
+            "line1\nline2 edited\nline3\n"
+        );
+        assert_eq!(lazy_diffs.iter().filter(|d| d.loaded).count(), 1);
+
+        load_all_file_contents(&mut lazy_diffs, &source, &backend);
+        assert!(lazy_diffs.iter().all(|d| d.loaded));
+
+        let DiffSource::Vcs { old_ref, new_ref } = &source else {
+            panic!("expected Vcs diff source");
+        };
+        let git_stats = compute_git_diff_stats(p, old_ref, new_ref.as_deref(), None).unwrap();
+        let eager_stats = lazy_diffs.iter().fold((0usize, 0usize), |(a, r), d| {
+            let (da, dr) = count_added_removed(&d.old_content, &d.new_content);
+            (a + da, r + dr)
+        });
+        assert_eq!(git_stats, eager_stats);
     }
 }
