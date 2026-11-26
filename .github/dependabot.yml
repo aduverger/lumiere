@@ -34,6 +34,8 @@ updates:
       include: scope
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: "dtolnay/rust-toolchain"
     groups:
       actions:
         applies-to: version-updates
