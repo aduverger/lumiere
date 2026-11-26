@@ -1,0 +1,41 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+# PR titles follow conventional commits (enforced by lint-pr-title),
+# so labels can be derived from them.
+autolabeler:
+  - label: breaking
+    title:
+      - '/^\w+(\(.+\))?!:/'
+  - label: feature
+    title:
+      - '/^feat(\(.+\))?:/'
+  - label: fix
+    title:
+      - '/^fix(\(.+\))?:/'
+  - label: chore
+    title:
+      - '/^(chore|docs|style|refactor|perf|test|build|ci|revert)(\(.+\))?:/'
+
+categories:
+  - title: ⚠ Breaking
+    semver-increment: minor
+    when:
+      labels: [breaking]
+  - title: 🚀 Features
+    semver-increment: minor
+    when:
+      labels: [feature]
+  - title: 🐛 Fixes
+    when:
+      labels: [fix]
+  - title: 🧹 Maintenance
+    when:
+      labels: [chore]
+  - type: version-resolver
+    semver-increment: patch
+
+category-template: '### $TITLE'
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+template: |
+  $CHANGES
