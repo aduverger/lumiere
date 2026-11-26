@@ -490,12 +490,15 @@ fn render_single_panel(
         }
     }
 
-    let para = Paragraph::new(lines).scroll((0, h_scroll)).block(
-        Block::default()
-            .title(Line::styled(title, title_style))
-            .borders(Borders::ALL)
-            .border_style(border_style),
-    );
+    let para = Paragraph::new(lines)
+        .style(Style::default().bg(bg))
+        .scroll((0, h_scroll))
+        .block(
+            Block::default()
+                .title(Line::styled(title, title_style))
+                .borders(Borders::ALL)
+                .border_style(border_style),
+        );
     frame.render_widget(para, main_area);
 
     let mut annotation_rects = Vec::new();
