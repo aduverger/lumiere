@@ -221,7 +221,6 @@ pub fn render_diff(frame: &mut Frame, input: &DiffRenderInput<'_>) -> DiffRender
             main_area,
             input,
             diff,
-            viewed_hunks,
             SinglePanelKind::Added,
             h_scroll,
             title_style,
@@ -233,7 +232,6 @@ pub fn render_diff(frame: &mut Frame, input: &DiffRenderInput<'_>) -> DiffRender
             main_area,
             input,
             diff,
-            viewed_hunks,
             SinglePanelKind::Deleted,
             h_scroll,
             title_style,
@@ -321,7 +319,6 @@ fn render_single_panel(
     main_area: Rect,
     input: &DiffRenderInput<'_>,
     diff: &FileDiff,
-    viewed_hunks: &HashSet<usize>,
     kind: SinglePanelKind,
     h_scroll: u16,
     title_style: Style,
@@ -331,19 +328,9 @@ fn render_single_panel(
     let t = theme::get();
     let bg = t.ui.bg;
     let side_by_side = state.side_by_side_ref();
-    let hunks = state.hunks_ref();
 
-    let (
-        title,
-        panel_focus,
-        match_panel,
-        source,
-        tree_map,
-        highlighter,
-        line_color_bg,
-        gutter_bg_base,
-        gutter_fg,
-    ) = match kind {
+    let (title, panel_focus, match_panel, source, tree_map, highlighter, indicator_fg) = match kind
+    {
         SinglePanelKind::Added => (
             " [2] New File ",
             DiffPanelFocus::New,
@@ -351,8 +338,6 @@ fn render_single_panel(
             &diff.new_content,
             &state.cached_trees.new_file_trees,
             input.new_highlighter,
-            t.diff.added_bg,
-            t.diff.added_gutter_bg,
             t.diff.added_gutter_fg,
         ),
         SinglePanelKind::Deleted => (
@@ -362,8 +347,6 @@ fn render_single_panel(
             &diff.old_content,
             &state.cached_trees.old_file_trees,
             input.old_highlighter,
-            t.diff.deleted_bg,
-            t.diff.deleted_gutter_bg,
             t.diff.deleted_gutter_fg,
         ),
     };
@@ -426,7 +409,7 @@ fn render_single_panel(
 
     let ann_index_ranges = compute_target_index_ranges(&line_slots, side_by_side);
     let annotation_indicator_style = Style::default().fg(t.ui.highlight);
-    let focus_style = Style::default().fg(t.ui.border_focused);
+    let indicator_style = Style::default().fg(indicator_fg);
     let row_target_width = (main_area.width as usize).saturating_sub(2) + h_scroll as usize;
 
     for (i, diff_line) in side_by_side
@@ -439,11 +422,6 @@ fn render_single_panel(
         let selection_range = get_selection_range_for_line(line_idx, panel_focus, &state.selection);
         let in_annotation = is_in_ann_range(line_idx, None, &ann_index_ranges);
         let line_selected = selection_range.is_some_and(|(s, e)| s == 0 && e == usize::MAX);
-        let hunk_viewed = !matches!(diff_line.change_type, ChangeType::Equal)
-            && hunks
-                .iter()
-                .rposition(|&h| h <= line_idx)
-                .is_some_and(|idx| viewed_hunks.contains(&idx));
 
         let side_line = match kind {
             SinglePanelKind::Added => diff_line.new_line.as_ref(),
@@ -451,45 +429,44 @@ fn render_single_panel(
         };
         if let Some((num, text)) = side_line {
             let gutter_bg = if line_selected {
-                blend_with_selection(gutter_bg_base)
+                blend_with_selection(bg)
             } else {
-                gutter_bg_base
+                bg
             };
             let prefix_spans = vec![
                 make_indicator_span(
-                    false,
+                    !in_annotation,
                     in_annotation,
                     line_selected,
                     bg,
-                    focus_style,
+                    indicator_style,
                     annotation_indicator_style,
                 ),
                 Span::styled(
                     format!("{num:4} "),
-                    Style::default().fg(gutter_fg).bg(gutter_bg),
+                    Style::default().fg(t.ui.line_number).bg(gutter_bg),
                 ),
             ];
             let matches = state
                 .search_state
                 .get_matches_for_line(line_idx, match_panel);
-            let line_bg = if hunk_viewed { bg } else { line_color_bg };
             let content_spans = highlight_diff_line(&LineHighlightParams {
                 text,
                 filename: &diff.filename,
-                line_bg: Some(line_bg),
+                line_bg: Some(bg),
                 word_emphasis: None,
                 search_ranges: &matches,
                 highlighter: Some(highlighter),
                 line_number: Some(*num),
                 tab_width: state.settings.tab_width,
             });
-            let content_spans = apply_selection_to_spans(content_spans, selection_range, line_bg);
+            let content_spans = apply_selection_to_spans(content_spans, selection_range, bg);
             push_wrapped_diff_line(
                 &mut lines,
                 prefix_spans,
                 content_spans,
                 row_target_width,
-                line_bg,
+                bg,
                 state.settings.wrap,
             );
         }
@@ -1280,5 +1257,86 @@ mod tests {
         assert_eq!(output.annotation_rects.len(), 1);
         assert_eq!(output.annotation_rects[0].thread_id, id);
         assert!(!output.annotation_rects[0].expand_rows.is_empty());
+    }
+
+    #[test]
+    fn test_render_single_panel_uses_left_bar_and_neutral_background() {
+        let render_buffer = |state: &mut AppState| {
+            state.show_sidebar = false;
+            state.ensure_cache();
+            state.get_highlighters();
+            let (old_hl, new_hl) = state.highlighters_ref().unwrap();
+            let mut terminal = Terminal::new(TestBackend::new(80, 10)).unwrap();
+            let review = ReviewStatus {
+                agent: "none",
+                queued_comments: 0,
+                notice: None,
+            };
+            terminal
+                .draw(|frame| {
+                    render_diff(
+                        frame,
+                        &DiffRenderInput {
+                            state,
+                            commit_ref: "main",
+                            pr_info: None,
+                            old_highlighter: old_hl,
+                            new_highlighter: new_hl,
+                            editor: None,
+                            review: &review,
+                        },
+                    );
+                })
+                .unwrap();
+            terminal.backend().buffer().clone()
+        };
+
+        let t = theme::get();
+
+        let mut added = AppState::new(
+            vec![FileDiff::from_contents(
+                "new.rs".into(),
+                String::new(),
+                "fn hello() {}\nlet x = 1;\n".into(),
+            )],
+            None,
+        );
+        added.add_thread(
+            "new.rs".into(),
+            AnnotationTarget::LineRange {
+                panel: DiffPanelFocus::New,
+                start_line: 2,
+                end_line: 2,
+            },
+            "note".into(),
+        );
+        let buf = render_buffer(&mut added);
+        let bar = buf.cell((1, 1)).unwrap();
+        assert_eq!(bar.symbol(), "▎");
+        assert_eq!(bar.fg, t.diff.added_gutter_fg);
+        let line_num = buf.cell((5, 1)).unwrap();
+        assert_eq!(line_num.symbol(), "1");
+        assert_eq!(line_num.fg, t.ui.line_number);
+        assert_eq!(line_num.bg, t.ui.bg);
+        let code = buf.cell((7, 1)).unwrap();
+        assert_eq!(code.bg, t.ui.bg);
+        let thread_bar = buf.cell((1, 2)).unwrap();
+        assert_eq!(thread_bar.symbol(), "▍");
+        assert_eq!(thread_bar.fg, t.ui.highlight);
+
+        let mut deleted = AppState::new(
+            vec![FileDiff::from_contents(
+                "old.rs".into(),
+                "fn goodbye() {}\n".into(),
+                String::new(),
+            )],
+            None,
+        );
+        let del_buf = render_buffer(&mut deleted);
+        let del_bar = del_buf.cell((1, 1)).unwrap();
+        assert_eq!(del_bar.symbol(), "▎");
+        assert_eq!(del_bar.fg, t.diff.deleted_gutter_fg);
+        assert_eq!(del_buf.cell((5, 1)).unwrap().bg, t.ui.bg);
+        assert_eq!(del_buf.cell((7, 1)).unwrap().bg, t.ui.bg);
     }
 }
