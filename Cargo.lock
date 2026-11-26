@@ -2272,7 +2272,7 @@ dependencies = [
  "streaming-iterator",
  "tempfile",
  "terminal-light",
- "thiserror 1.0.65",
+ "thiserror 2.0.17",
  "tokio",
  "tree-sitter",
  "tree-sitter-bash",
@@ -3248,17 +3248,17 @@ checksum = "a6f76be906d875a0ce764c52a055858c24847cb7dc674d3a5ad8cf7e3dd4ee9f"
 dependencies = [
  "coolor",
  "crossterm 0.29.0",
- "thiserror 1.0.65",
+ "thiserror 1.0.69",
  "xterm-query",
 ]
 
 [[package]]
 name = "thiserror"
-version = "1.0.65"
+version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d11abd9594d9b38965ef50805c5e469ca9cc6f197f883f717e0269a3057b3d5"
+checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
 dependencies = [
- "thiserror-impl 1.0.65",
+ "thiserror-impl 1.0.69",
 ]
 
 [[package]]
@@ -3272,9 +3272,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.65"
+version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae71770322cbd277e69d762a16c444af02aa0575ac0d174f0b9562d3b37f8602"
+checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3503,7 +3503,7 @@ dependencies = [
  "lazy_static",
  "regex",
  "streaming-iterator",
- "thiserror 1.0.65",
+ "thiserror 1.0.69",
  "tree-sitter",
 ]
 
@@ -4307,7 +4307,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "292c33df434fde4ecd87a7afecdfa1681a3d29567fc69c774a0d83d32c095331"
 dependencies = [
  "nix",
- "thiserror 1.0.65",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
