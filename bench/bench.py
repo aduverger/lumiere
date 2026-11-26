@@ -21,6 +21,8 @@ import time
 from pathlib import Path
 
 ROWS, COLUMNS = 40, 140
+RESIZE_ROWS, RESIZE_COLUMNS = 30, 100
+SCROLL_STEPS = 30
 WAIT_LIMIT = 60.0
 # Long enough for a tool to finish what it does after its first screen.
 SETTLING_TIME = 1.0
@@ -35,19 +37,39 @@ TOOLS = {
     "lumiere": {
         "command": ["lumiere", "diff"],
         "watch": ["--watch"],
-        "keys": {"next_file": b"\x1bk", "toggle_view": b"z", "quit": b"q"},
+        "keys": {
+            "next_file": b"\x1bk",
+            "toggle_view": b"z",
+            "page_down": b"\x04",
+            "toggle_sidebar": b"\t",
+            "quit": b"q",
+        },
+        "sidebar_open_at_start": True,
         # On screen in the folded view only.
         "folded_text": "unchanged lines",
     },
     "lumen": {
         "command": ["lumen", "diff"],
         "watch": ["--watch"],
-        "keys": {"next_file": b"\x0a", "quit": b"q"},
+        "keys": {
+            "next_file": b"\x0a",
+            "page_down": b"\x04",
+            "toggle_sidebar": b"\t",
+            "quit": b"q",
+        },
+        "sidebar_open_at_start": True,
     },
     "hunk": {
         "command": ["hunk", "diff"],
         "watch": ["--watch"],
-        "keys": {"next_file": b".", "toggle_view": b"z", "quit": b"q"},
+        "keys": {
+            "next_file": b".",
+            "toggle_view": b"z",
+            "page_down": b"d",
+            "toggle_sidebar": b"s",
+            "quit": b"q",
+        },
+        "sidebar_open_at_start": False,
         # Hunk skips auto-rendering the 5.3 MB fixture ("File too large to render automatically.").
         "large_file_rendered": False,
         "unfolded_text": "Hide ",
@@ -55,7 +77,15 @@ TOOLS = {
     "plannotator-tui": {
         "command": ["plannotator-tui", "review"],
         "watch": None,
-        "keys": {"next_file": b"n", "toggle_view": b"o", "quit": b"q"},
+        "keys": {
+            "next_file": b"n",
+            "toggle_view": b"o",
+            "page_down": b"\x04",
+            "focus_sidebar": b"f",
+            "toggle_sidebar": b"f",
+            "quit": b"q",
+        },
+        "sidebar_open_at_start": True,
         # Continuous stream already shows z_large.py's first hunk at start, and whole-file view caps at 5 MiB.
         "large_file_rendered": False,
         "folded_text": "Context not included in patch",
@@ -113,6 +143,7 @@ def build_repository(root, files, ignored_folders=0):
 def build_repositories(root):
     build_repository(root / "small", {f"src/file{n}.py": (120, 40) for n in range(3)})
     build_repository(root / "many", {f"src/dir{n // 20:02}/file{n:03}.py": (240, 60) for n in range(300)})
+    build_repository(root / "scroll", {"src/scroll.py": (6_000, 15)})
     build_repository(root / "large", {"a_small.py": (120, 40), "z_large.py": (360_000, 6_000)})
     build_repository(root / "ignored", {f"src/file{n}.py": (120, 40) for n in range(3)}, ignored_folders=8000)
 
@@ -123,8 +154,10 @@ def build_repositories(root):
 class Screen:
     """Keeps the characters a program puts on screen and answers its questions."""
 
-    def __init__(self):
-        self.cells = [[" "] * COLUMNS for _ in range(ROWS)]
+    def __init__(self, rows=ROWS, columns=COLUMNS):
+        self.rows = rows
+        self.columns = columns
+        self.cells = [[" "] * columns for _ in range(rows)]
         self.row = self.column = 0
         self.pending = ""
 
@@ -157,13 +190,13 @@ class Screen:
         if character == "\r":
             self.column = 0
         elif character == "\n":
-            self.row = min(self.row + 1, ROWS - 1)
+            self.row = min(self.row + 1, self.rows - 1)
         elif character == "\b":
             self.column = max(self.column - 1, 0)
         elif character >= " ":
-            if self.column >= COLUMNS:
+            if self.column >= self.columns:
                 self.column = 0
-                self.row = min(self.row + 1, ROWS - 1)
+                self.row = min(self.row + 1, self.rows - 1)
             self.cells[self.row][self.column] = character
             self.column += 1
 
@@ -171,33 +204,35 @@ class Screen:
         numbers = [int(n) if n else 0 for n in re.split("[;:]", parameters)]
         first = numbers[0]
         if prefix == "?" and final in "hl" and first in (47, 1047, 1049):
-            self.cells = [[" "] * COLUMNS for _ in range(ROWS)]
+            self.cells = [[" "] * self.columns for _ in range(self.rows)]
         elif prefix:
             pass
         elif final in "Hf":
-            self.row = min(max(first, 1), ROWS) - 1
-            self.column = min(max(numbers[1] if len(numbers) > 1 else 1, 1), COLUMNS) - 1
+            self.row = min(max(first, 1), self.rows) - 1
+            self.column = min(max(numbers[1] if len(numbers) > 1 else 1, 1), self.columns) - 1
         elif final == "A":
             self.row = max(self.row - max(first, 1), 0)
         elif final == "B":
-            self.row = min(self.row + max(first, 1), ROWS - 1)
+            self.row = min(self.row + max(first, 1), self.rows - 1)
         elif final == "C":
-            self.column = min(self.column + max(first, 1), COLUMNS - 1)
+            self.column = min(self.column + max(first, 1), self.columns - 1)
         elif final == "D":
             self.column = max(self.column - max(first, 1), 0)
         elif final == "G":
-            self.column = min(max(first, 1), COLUMNS) - 1
+            self.column = min(max(first, 1), self.columns) - 1
         elif final == "d":
-            self.row = min(max(first, 1), ROWS) - 1
+            self.row = min(max(first, 1), self.rows) - 1
         elif final == "K":
-            start, end = {0: (self.column, COLUMNS), 1: (0, self.column + 1)}.get(first, (0, COLUMNS))
+            start, end = {0: (self.column, self.columns), 1: (0, self.column + 1)}.get(
+                first, (0, self.columns)
+            )
             self.cells[self.row][start:end] = [" "] * (end - start)
         elif final == "J" and first in (2, 3):
-            self.cells = [[" "] * COLUMNS for _ in range(ROWS)]
+            self.cells = [[" "] * self.columns for _ in range(self.rows)]
         elif final == "J" and first == 0:
-            self.cells[self.row][self.column :] = [" "] * (COLUMNS - self.column)
-            for row in range(self.row + 1, ROWS):
-                self.cells[row] = [" "] * COLUMNS
+            self.cells[self.row][self.column :] = [" "] * (self.columns - self.column)
+            for row in range(self.row + 1, self.rows):
+                self.cells[row] = [" "] * self.columns
         elif final == "n" and first == 5:
             return b"\x1b[0n"
         elif final == "n" and first == 6:
@@ -212,6 +247,7 @@ class Session:
 
     def __init__(self, command, folder, state_folder):
         self.screen = Screen()
+        self.bytes_read = 0
         # Keeps the bytes of a character cut in two for the next read.
         self.decoder = codecs.getincrementaldecoder("utf-8")(errors="ignore")
         environment = {**os.environ, "TERM": "xterm-256color", "COLORTERM": "truecolor"}
@@ -231,9 +267,17 @@ class Session:
             data = os.read(self.terminal, 1 << 16)
         except OSError:
             return
+        self.bytes_read += len(data)
         answers = self.screen.feed(self.decoder.decode(data))
         if answers:
             os.write(self.terminal, answers)
+
+    def resize(self, rows, columns):
+        self.screen = Screen(rows, columns)
+        started = time.monotonic()
+        fcntl.ioctl(self.terminal, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
+        os.kill(self.pid, signal.SIGWINCH)
+        return started
 
     def seconds_until(self, on_screen, since=None):
         """Seconds from `since` (default: launch) until `on_screen(text)` holds."""
@@ -308,6 +352,20 @@ def measure_once(tool, repositories, state_folder):
                     run.idle(SETTLING_TIME)
                     pressed = run.press(keys["next_file"])
                     values["next file"] = run.seconds_until(shows("after_file002"), pressed) * 1000
+                    if "toggle_sidebar" in keys:
+                        run.idle(0.3)
+                        if "focus_sidebar" in keys:
+                            run.press(keys["focus_sidebar"])
+                            run.idle(0.15)
+                        open_now = tool.get("sidebar_open_at_start", True)
+                        t1_wait = (lambda scr: "file001" not in scr) if open_now else shows("file001")
+                        t2_wait = shows("file001") if open_now else (lambda scr: "file001" not in scr)
+                        pressed = run.press(keys["toggle_sidebar"])
+                        t1 = run.seconds_until(t1_wait, pressed) * 1000
+                        run.idle(0.2)
+                        pressed = run.press(keys["toggle_sidebar"])
+                        t2 = run.seconds_until(t2_wait, pressed) * 1000
+                        values["sidebar toggle, many"] = (t1 + t2) / 2
                 if name == "large" and not watch:
                     run.idle(SETTLING_TIME)
                     if tool.get("large_file_rendered", True):
@@ -338,10 +396,41 @@ def measure_once(tool, repositories, state_folder):
                     values["idle processor use, watch"] = (run.cpu_seconds() - used) / 4 * 100
             finally:
                 run.close(keys["quit"])
+
+    if "page_down" in keys:
+        run = Session(tool["command"], repositories / "scroll", state_folder)
+        try:
+            run.seconds_until(shows("after_scroll"))
+            run.idle(SETTLING_TIME)
+            latencies = []
+            previous = run.screen.text()
+            bytes_before = run.bytes_read
+            for _ in range(SCROLL_STEPS):
+                pressed = run.press(keys["page_down"])
+                elapsed = run.seconds_until(lambda scr, prev=previous: scr != prev, pressed) * 1000
+                latencies.append(elapsed)
+                previous = run.screen.text()
+            run.idle(0.1)
+            ordered = sorted(latencies)
+            p95_index = min(len(ordered) - 1, int(0.95 * (len(ordered) - 1)))
+            values["scroll step, median"] = statistics.median(ordered)
+            values["scroll step, p95"] = ordered[p95_index]
+            values["scroll output"] = (run.bytes_read - bytes_before) / SCROLL_STEPS / 1024
+
+            empty_small = Screen(RESIZE_ROWS, RESIZE_COLUMNS).text()
+            started = run.resize(RESIZE_ROWS, RESIZE_COLUMNS)
+            r1 = run.seconds_until(lambda scr: scr != empty_small, started) * 1000
+            run.idle(0.15)
+            empty_full = Screen(ROWS, COLUMNS).text()
+            started = run.resize(ROWS, COLUMNS)
+            r2 = run.seconds_until(lambda scr: scr != empty_full, started) * 1000
+            values["terminal resize"] = (r1 + r2) / 2
+        finally:
+            run.close(keys["quit"])
     return values
 
 
-UNITS = {"peak memory": "MB", "idle processor": "%"}
+UNITS = {"peak memory": "MB", "idle processor": "%", "scroll output": "KB"}
 
 
 def unit_of(metric):
@@ -377,7 +466,7 @@ def run(arguments):
     for metric, values in metrics.items():
         unit = unit_of(metric)
         print(
-            f"{metric:<34} {statistics.median(values):>7.0f} {unit:<2} {min(values):>7.0f} {unit:<2} {max(values):>7.0f} {unit:<2}"
+            f"{metric:<34} {statistics.median(values):>7.1f} {unit:<2} {min(values):>7.1f} {unit:<2} {max(values):>7.1f} {unit:<2}"
         )
 
 

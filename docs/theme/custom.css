@@ -99,9 +99,31 @@ td {
   text-align: left;
 }
 
-.comparison-perf table th:nth-child(2),
-.comparison-perf table td:nth-child(2) {
+.comparison-perf table td:has(> strong) {
   background: var(--lumiere-win-bg);
+}
+
+.bench-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 1.25rem 0;
+  border-radius: 10px;
+  border: 1px solid var(--lumiere-border);
+}
+
+.bench-chart-light {
+  display: none;
+}
+
+.light .bench-chart-dark,
+.rust .bench-chart-dark {
+  display: none;
+}
+
+.light .bench-chart-light,
+.rust .bench-chart-light {
+  display: block;
 }
 
 pre > code {

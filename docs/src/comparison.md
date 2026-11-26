@@ -38,33 +38,41 @@ End-to-end PTY benchmarks run with [`bench/bench.py`](https://github.com/aduverg
 > [!NOTE]
 > `diffs-rs` (`diffs`) is a standalone crate/viewer for two-commit diffs and piped patches rather than working-tree reviews, so its engine is benchmarked via `plannotator-tui review` — the full review TUI built on `diffs-rs`. Non-interactive pagers (`difftastic`, `delta`, `diff-so-fancy`, `diff`) do not run an interactive TUI event loop and are omitted from this table.
 
+<img class="bench-chart bench-chart-dark" src="assets/benchmarks-dark.svg" alt="Lumiere benchmark comparison chart" />
+<img class="bench-chart bench-chart-light" src="assets/benchmarks-light.svg" alt="Lumiere benchmark comparison chart" />
+
 <div class="comparison-perf">
 
 | Metric | **Lumiere** (`0.1.0`) | **hunk** (`0.25.0`) | **plannotator-tui** (`0.12.0`, `diffs-rs`) | **lumen** (`2.32.0`) |
 | --- | ---: | ---: | ---: | ---: |
-| Start (`small` repo, 3 files) | **29.0 ms** | 481.5 ms *(16.6×)* | 51.2 ms *(1.8×)* | 577.9 ms *(19.9×)* |
-| Peak memory (`small` repo) | **12.2 MB** | 211.9 MB *(17.4×)* | 16.5 MB *(1.4×)* | 41.1 MB *(3.4×)* |
-| Start (`small` repo, `--watch`) | **18.1 ms** | 511.7 ms *(28.3×)* | *no watch* | 579.6 ms *(32.0×)* |
-| File change to screen (`--watch`) | 553.4 ms³ | **278.1 ms** *(0.5×)* | *no watch* | 3.2 ms⁴ |
-| Idle CPU (`--watch`, over 4 s) | **0.0%** | 0.3% | *no watch* | 1.5%⁴ |
-| Start (`many` repo, 300 files) | **24.6 ms** | 851.5 ms *(34.6×)* | 239.8 ms *(9.7×)* | 656.0 ms *(26.7×)* |
-| First key answered (`many`) | 7.2 ms | 85.9 ms *(11.9×)* | **2.4 ms** *(0.3×)* | 5.5 ms *(0.8×)* |
-| Next file (`many`) | 4.6 ms | 14.2 ms *(3.1×)* | **1.0 ms** *(0.2×)* | 5.8 ms *(1.3×)* |
-| Start (`many` repo, `--watch`) | **25.6 ms** | 905.4 ms *(35.4×)* | *no watch* | 666.9 ms *(26.1×)* |
-| Start (`large` repo, 360k-line file) | **22.6 ms** | 516.4 ms *(22.8×)* | 151.8 ms *(6.7×)* | 755.5 ms *(33.4×)* |
-| Open the 360k-line file (`5.3 MiB`) | **168.7 ms** | *skipped¹* | *streamed²* | 5,590.0 ms *(33.1×)* |
-| Toggle whole-file view (`5.3 MiB`) | **111.5 ms** | *skipped¹* | *capped (5 MiB)²* | *n/a* |
-| Peak memory (`large` repo) | 155.7 MB | 197.6 MB¹ *(1.3×)* | **16.7 MB²** *(0.1×)* | 1,109.5 MB *(7.1×)* |
-| Start (`large` repo, `--watch`) | **19.1 ms** | 658.7 ms *(34.5×)* | *no watch* | 749.6 ms *(39.2×)* |
-| Start (`ignored` repo, 8k `.venv` dirs) | **20.0 ms** | 467.3 ms *(23.4×)* | 49.4 ms *(2.5×)* | 575.7 ms *(28.8×)* |
-| Start (`ignored` repo, `--watch`) | **25.2 ms** | 515.1 ms *(20.4×)* | *no watch* | 1,004.5 ms *(39.9×)* |
+| Start (`small` repo, 3 files) | **23.0 ms** | 497.6 ms *(21.6×)* | 52.1 ms *(2.3×)* | 578.3 ms *(25.1×)* |
+| Peak memory (`small` repo) | **12.2 MB** | 201.8 MB *(16.5×)* | 15.1 MB *(1.2×)* | 37.3 MB *(3.1×)* |
+| Start (`small` repo, `--watch`) | **19.4 ms** | 516.2 ms *(26.6×)* | *no watch* | 587.5 ms *(30.3×)* |
+| File change to screen (`--watch`) | 508.3 ms³ | **285.1 ms** *(0.6×)* | *no watch* | 305.6 ms⁴ |
+| Idle CPU (`--watch`, over 4 s) | **0.0%** | 0.3% | *no watch* | 1.3%⁴ |
+| Start (`many` repo, 300 files) | **27.7 ms** | 849.7 ms *(30.7×)* | 240.6 ms *(8.7×)* | 659.1 ms *(23.8×)* |
+| First key answered (`many`) | 10.4 ms | 69.9 ms *(6.7×)* | **1.6 ms** *(0.2×)* | 5.1 ms *(0.5×)* |
+| Next file (`many`) | 4.6 ms | 12.4 ms *(2.7×)* | **1.0 ms** *(0.2×)* | 5.8 ms *(1.3×)* |
+| Sidebar toggle (`many`, 300 files) | 1.6 ms | 153.9 ms *(96.2×)* | **1.0 ms** *(0.6×)* | 2.9 ms *(1.8×)* |
+| Start (`many` repo, `--watch`) | **24.7 ms** | 935.2 ms *(37.9×)* | *no watch* | 665.0 ms *(26.9×)* |
+| Start (`large` repo, 360k-line file) | **23.7 ms** | 573.3 ms *(24.2×)* | 167.5 ms *(7.1×)* | 759.4 ms *(32.0×)* |
+| Open the 360k-line file (`5.3 MiB`) | **166.5 ms** | *skipped¹* | *streamed²* | 5,640.0 ms *(33.9×)* |
+| Toggle whole-file view (`5.3 MiB`) | **110.2 ms** | *skipped¹* | *capped (5 MiB)²* | *n/a* |
+| Peak memory (`large` repo) | 155.7 MB | 191.6 MB¹ *(1.2×)* | **15.3 MB²** *(0.1×)* | 1,105.6 MB *(7.1×)* |
+| Start (`large` repo, `--watch`) | **20.3 ms** | 680.8 ms *(33.5×)* | *no watch* | 761.3 ms *(37.5×)* |
+| Start (`ignored` repo, 8k `.venv` dirs) | **24.4 ms** | 469.2 ms *(19.2×)* | 48.3 ms *(2.0×)* | 593.1 ms *(24.3×)* |
+| Start (`ignored` repo, `--watch`) | **22.4 ms** | 490.3 ms *(21.9×)* | *no watch* | 990.3 ms *(44.2×)* |
+| Scroll step, median (6k-line file) | **0.7 ms** | 1.1 ms *(1.6×)* | **0.7 ms** *(1.0×)* | **0.7 ms** *(1.0×)* |
+| Scroll step, p95 (6k-line file) | **0.9 ms** | 37.8 ms *(42.0×)* | 1.5 ms *(1.7×)* | 1.0 ms *(1.1×)* |
+| Scroll output (PTY bytes/frame) | 4.2 KB | 4.1 KB *(1.0×)* | **2.2 KB** *(0.5×)* | 6.8 KB *(1.6×)* |
+| Terminal resize (`140×40 ↔ 100×30`) | 3.1 ms | 103.8 ms *(33.5×)* | **1.1 ms** *(0.4×)* | 2.8 ms *(0.9×)* |
 
 </div>
 
 1. **`hunk`** does not auto-render the 5.3 MiB file (`File too large to render automatically.`), so `open the large file` and `whole file view` are skipped.
-2. **`plannotator-tui`** streams only the unified patch hunks in a continuous view (so `z_large.py`'s first hunk is already on screen at startup with just `16.7 MB` RSS), and caps its whole-file view (`o`) at 5 MiB (`z_large.py is 5.3 MiB; the whole-file view shows files up to 5 MiB.`).
+2. **`plannotator-tui`** streams only the unified patch hunks in a continuous view (so `z_large.py`'s first hunk is already on screen at startup with just `15.3 MB` RSS), and caps its whole-file view (`o`) at 5 MiB (`z_large.py is 5.3 MiB; the whole-file view shows files up to 5 MiB.`).
 3. **Lumiere** intentionally gathers filesystem events for a 500 ms debounce window (`GATHERING_TIME`) before reloading so atomic editor save-and-rename sequences settle into one reload.
-4. **`lumen 2.32.0`** does not ignore `EventKind::Access` events in `--watch` mode, so each reload triggers another reload in a loop — explaining its `1.5%` idle CPU and erratic `3–306 ms` edit-to-screen timing.
+4. **`lumen 2.32.0`** does not ignore `EventKind::Access` events in `--watch` mode, so each reload triggers another reload in a loop — explaining its `1.3%` idle CPU and erratic edit-to-screen timing.
 
 To reproduce on your own machine:
 
