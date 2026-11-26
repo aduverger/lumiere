@@ -308,6 +308,15 @@ fn compute_total_line_stats(file_diffs: &[FileDiff]) -> (usize, usize) {
     (added, removed)
 }
 
+fn initial_total_stats(file_diffs: &[FileDiff], diff_source: &DiffSource) -> (usize, usize, bool) {
+    if matches!(diff_source, DiffSource::Eager) {
+        let (added, removed) = compute_total_line_stats(file_diffs);
+        (added, removed, true)
+    } else {
+        (0, 0, file_diffs.is_empty())
+    }
+}
+
 impl AppState {
     pub fn new(file_diffs: Vec<FileDiff>, focus_file: Option<&str>) -> Self {
         Self::new_with_settings(file_diffs, focus_file, DiffViewSettings::default())
@@ -318,16 +327,7 @@ impl AppState {
         focus_file: Option<&str>,
         settings: DiffViewSettings,
     ) -> Self {
-        let (total_added, total_removed) = compute_total_line_stats(&file_diffs);
-        Self::build_state(
-            file_diffs,
-            focus_file,
-            settings,
-            DiffSource::Eager,
-            total_added,
-            total_removed,
-            true,
-        )
+        Self::build_state(file_diffs, focus_file, settings, DiffSource::Eager)
     }
 
     fn build_state(
@@ -335,10 +335,9 @@ impl AppState {
         focus_file: Option<&str>,
         settings: DiffViewSettings,
         diff_source: DiffSource,
-        total_added: usize,
-        total_removed: usize,
-        stats_ready: bool,
     ) -> Self {
+        let (total_added, total_removed, stats_ready) =
+            initial_total_stats(&file_diffs, &diff_source);
         let sidebar_items = build_file_tree(&file_diffs);
         let collapsed_dirs = HashSet::new();
         let sidebar_visible = build_sidebar_visible_indices(&sidebar_items, &collapsed_dirs);
@@ -423,16 +422,7 @@ impl AppState {
         backend: &dyn VcsBackend,
         focus_file: Option<&str>,
     ) -> Self {
-        let settings = DiffViewSettings {
-            wrap: options.wrap,
-            hunks_only: options.hunks_only,
-            ..DiffViewSettings::default()
-        };
-        let mut state = Self::new_with_settings(file_diffs, focus_file, settings);
-        state.set_vcs_name(backend.name());
-        state.refresh_branch(backend);
-        state.set_diff_reference(options.reference.as_ref().map(ToString::to_string));
-        state
+        Self::for_repo_lazy(options, file_diffs, DiffSource::Eager, backend, focus_file)
     }
 
     pub fn for_repo_lazy(
@@ -442,59 +432,25 @@ impl AppState {
         backend: &dyn VcsBackend,
         focus_file: Option<&str>,
     ) -> Self {
-        if matches!(diff_source, DiffSource::Eager) {
-            return Self::for_repo(options, file_diffs, backend, focus_file);
-        }
         let settings = DiffViewSettings {
             wrap: options.wrap,
             hunks_only: options.hunks_only,
             ..DiffViewSettings::default()
         };
-        let stats_ready = file_diffs.is_empty();
-        let mut state = Self::build_state(
-            file_diffs,
-            focus_file,
-            settings,
-            diff_source,
-            0,
-            0,
-            stats_ready,
-        );
+        let mut state = Self::build_state(file_diffs, focus_file, settings, diff_source);
         state.set_vcs_name(backend.name());
         state.refresh_branch(backend);
         state.set_diff_reference(options.reference.as_ref().map(ToString::to_string));
-        if state.current_file < state.file_diffs.len() {
+        if state.current_file < state.file_diffs.len()
+            && !state.file_diffs[state.current_file].loaded
+        {
             let current = state.current_file;
             state.select_file_loaded(current, backend);
         }
         state
     }
 
-    pub fn ensure_file_loaded(&mut self, file_index: usize, backend: &dyn VcsBackend) {
-        let Some(diff) = self.file_diffs.get_mut(file_index) else {
-            return;
-        };
-        if !load_file_content(diff, &self.diff_source, backend) {
-            return;
-        }
-        let updated_status = diff.status;
-        for item in &mut self.sidebar_items {
-            if let SidebarItem::File {
-                file_index: idx,
-                status,
-                ..
-            } = item
-            {
-                if *idx == file_index {
-                    *status = updated_status;
-                    break;
-                }
-            }
-        }
-    }
-
-    pub fn ensure_all_loaded(&mut self, backend: &dyn VcsBackend) {
-        load_all_file_contents(&mut self.file_diffs, &self.diff_source, backend);
+    fn sync_sidebar_statuses(&mut self) {
         for item in &mut self.sidebar_items {
             if let SidebarItem::File {
                 file_index, status, ..
@@ -505,6 +461,20 @@ impl AppState {
                 }
             }
         }
+    }
+
+    pub fn ensure_file_loaded(&mut self, file_index: usize, backend: &dyn VcsBackend) {
+        let Some(diff) = self.file_diffs.get_mut(file_index) else {
+            return;
+        };
+        if load_file_content(diff, &self.diff_source, backend) {
+            self.sync_sidebar_statuses();
+        }
+    }
+
+    pub fn ensure_all_loaded(&mut self, backend: &dyn VcsBackend) {
+        load_all_file_contents(&mut self.file_diffs, &self.diff_source, backend);
+        self.sync_sidebar_statuses();
     }
 
     pub fn ensure_loaded_for_threads(&mut self, backend: &dyn VcsBackend) {
@@ -529,28 +499,18 @@ impl AppState {
         self.select_file(file_index);
     }
 
-    pub fn file_index_for_thread(&self, thread_id: &str) -> Option<usize> {
-        let thread = self.thread_by_id(thread_id)?;
-        self.file_diffs
-            .iter()
-            .position(|f| f.filename == thread.filename)
+    pub fn ensure_thread_file_loaded(&mut self, thread_id: &str, backend: &dyn VcsBackend) {
+        let Some(filename) = self.thread_by_id(thread_id).map(|t| t.filename.as_str()) else {
+            return;
+        };
+        if let Some(idx) = self.file_diffs.iter().position(|f| f.filename == filename) {
+            self.ensure_file_loaded(idx, backend);
+        }
     }
 
     pub fn attach_thread_store(&mut self, backend: &dyn VcsBackend) {
         match ThreadStore::for_repository(backend.working_tree_root()) {
-            Ok(store) => {
-                let stamp = store.stamp();
-                match store.load() {
-                    Ok(threads) => {
-                        self.threads = threads;
-                        self.thread_store_stamp = stamp;
-                        self.thread_store = Some(store);
-                        self.ensure_loaded_for_threads(backend);
-                        self.refresh_thread_anchors();
-                    }
-                    Err(error) => self.thread_store_error = Some(error),
-                }
-            }
+            Ok(store) => self.open_thread_store_inner(store, Some(backend)),
             Err(error) => self.thread_store_error = Some(error),
         }
     }
@@ -1059,16 +1019,8 @@ impl AppState {
         }
 
         self.file_diffs = file_diffs;
-        if matches!(self.diff_source, DiffSource::Eager) {
-            let (total_added, total_removed) = compute_total_line_stats(&self.file_diffs);
-            self.total_added = total_added;
-            self.total_removed = total_removed;
-            self.stats_ready = true;
-        } else {
-            self.total_added = 0;
-            self.total_removed = 0;
-            self.stats_ready = self.file_diffs.is_empty();
-        }
+        (self.total_added, self.total_removed, self.stats_ready) =
+            initial_total_stats(&self.file_diffs, &self.diff_source);
         self.sidebar_items = build_file_tree(&self.file_diffs);
 
         let filenames: HashSet<&str> = self
@@ -1146,12 +1098,19 @@ impl AppState {
     }
 
     pub fn open_thread_store(&mut self, store: ThreadStore) {
+        self.open_thread_store_inner(store, None);
+    }
+
+    fn open_thread_store_inner(&mut self, store: ThreadStore, backend: Option<&dyn VcsBackend>) {
         let stamp = store.stamp();
         match store.load() {
             Ok(threads) => {
                 self.threads = threads;
                 self.thread_store_stamp = stamp;
                 self.thread_store = Some(store);
+                if let Some(backend) = backend {
+                    self.ensure_loaded_for_threads(backend);
+                }
                 self.refresh_thread_anchors();
             }
             Err(error) => self.thread_store_error = Some(error),

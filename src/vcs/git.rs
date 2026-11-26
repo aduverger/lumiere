@@ -80,13 +80,18 @@ pub fn compute_git_diff_stats(
     file_filter: Option<&[String]>,
 ) -> Option<(usize, usize)> {
     let repo = Repository::discover(repo_root).ok()?;
+    let tree_for = |rev: &str| {
+        repo.revparse_single(rev.trim())
+            .ok()?
+            .peel_to_commit()
+            .ok()?
+            .tree()
+            .ok()
+    };
     let old_tree = if old_ref.is_empty() || old_ref == GIT_EMPTY_TREE_SHA {
         None
     } else {
-        repo.revparse_single(old_ref.trim())
-            .ok()
-            .and_then(|obj| obj.peel_to_commit().ok())
-            .and_then(|commit| commit.tree().ok())
+        tree_for(old_ref)
     };
 
     let mut opts = GitDiffOptions::new();
@@ -103,13 +108,7 @@ pub fn compute_git_diff_stats(
 
     let diff = match new_ref {
         Some(to) => {
-            let new_tree = repo
-                .revparse_single(to.trim())
-                .ok()?
-                .peel_to_commit()
-                .ok()?
-                .tree()
-                .ok()?;
+            let new_tree = tree_for(to)?;
             repo.diff_tree_to_tree(old_tree.as_ref(), Some(&new_tree), Some(&mut opts))
                 .ok()?
         }

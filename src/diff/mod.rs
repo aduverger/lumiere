@@ -48,16 +48,9 @@ pub struct FileDiff {
 
 impl FileDiff {
     pub fn from_contents(filename: String, old_content: String, new_content: String) -> Self {
-        let status = FileStatus::from_contents(&old_content, &new_content);
-        let is_binary = is_binary_content(&old_content) || is_binary_content(&new_content);
-        Self {
-            filename,
-            old_content,
-            new_content,
-            status,
-            is_binary,
-            loaded: true,
-        }
+        let mut diff = Self::pending(filename, FileStatus::Modified);
+        diff.apply_contents(old_content, new_content);
+        diff
     }
 
     pub fn pending(filename: String, status: FileStatus) -> Self {
@@ -120,9 +113,9 @@ pub fn spawn_stats_job(
     source: &DiffSource,
     file_filter: Option<Vec<String>>,
     tx: Sender<StatsUpdate>,
-) -> bool {
+) {
     let DiffSource::Vcs { old_ref, new_ref } = source else {
-        return false;
+        return;
     };
     let old_ref = old_ref.clone();
     let new_ref = new_ref.clone();
@@ -140,7 +133,6 @@ pub fn spawn_stats_job(
             });
         }
     });
-    true
 }
 
 pub fn is_binary_content(content: &str) -> bool {
@@ -551,6 +543,20 @@ pub fn load_all_file_contents(
     }
 }
 
+fn pending_diffs_for_refs(
+    refs: &DiffRefs,
+    file_filter: Option<&[String]>,
+    backend: &dyn VcsBackend,
+) -> (Vec<FileDiff>, DiffSource) {
+    let files = changed_files_with_status(refs, file_filter, backend);
+    let source = vcs_source_for(refs, backend);
+    let diffs = files
+        .into_iter()
+        .map(|(filename, status)| FileDiff::pending(filename, status))
+        .collect();
+    (diffs, source)
+}
+
 pub fn load_lazy_file_diffs(
     options: &DiffOptions,
     backend: &dyn VcsBackend,
@@ -559,13 +565,7 @@ pub fn load_lazy_file_diffs(
         return (load_file_diffs(options, backend), DiffSource::Eager);
     }
     let refs = DiffRefs::from_options(options, backend);
-    let files = changed_files_with_status(&refs, options.file.as_deref(), backend);
-    let source = vcs_source_for(&refs, backend);
-    let diffs = files
-        .into_iter()
-        .map(|(filename, status)| FileDiff::pending(filename, status))
-        .collect();
-    (diffs, source)
+    pending_diffs_for_refs(&refs, options.file.as_deref(), backend)
 }
 
 pub fn load_lazy_single_commit_diffs(
@@ -579,38 +579,16 @@ pub fn load_lazy_single_commit_diffs(
             DiffSource::Eager,
         );
     }
-    let files = backend
-        .get_changed_files_with_status(commit_id)
-        .unwrap_or_default();
-    let files: Vec<(String, FileStatus)> = match file_filter {
-        Some(filter) => files
-            .into_iter()
-            .filter(|(f, _)| filter.contains(f))
-            .collect(),
-        None => files,
-    };
-    let parent_ref = backend
-        .get_parent_ref_or_empty(commit_id)
-        .unwrap_or_default();
-    let source = DiffSource::Vcs {
-        old_ref: parent_ref,
-        new_ref: Some(commit_id.to_string()),
-    };
-    let diffs = files
-        .into_iter()
-        .map(|(filename, status)| FileDiff::pending(filename, status))
-        .collect();
-    (diffs, source)
+    pending_diffs_for_refs(
+        &DiffRefs::Single(commit_id.to_string()),
+        file_filter.as_deref(),
+        backend,
+    )
 }
 
 pub fn load_file_diffs(options: &DiffOptions, backend: &dyn VcsBackend) -> Vec<FileDiff> {
     let refs = DiffRefs::from_options(options, backend);
-    let files = changed_files_with_status(&refs, options.file.as_deref(), backend);
-    let source = vcs_source_for(&refs, backend);
-    let mut diffs: Vec<FileDiff> = files
-        .into_iter()
-        .map(|(filename, status)| FileDiff::pending(filename, status))
-        .collect();
+    let (mut diffs, source) = pending_diffs_for_refs(&refs, options.file.as_deref(), backend);
     load_all_file_contents(&mut diffs, &source, backend);
     diffs
 }
@@ -620,27 +598,11 @@ pub fn load_single_commit_diffs(
     file_filter: &Option<Vec<String>>,
     backend: &dyn VcsBackend,
 ) -> Vec<FileDiff> {
-    let files = backend
-        .get_changed_files_with_status(commit_id)
-        .unwrap_or_default();
-    let files: Vec<(String, FileStatus)> = match file_filter {
-        Some(filter) => files
-            .into_iter()
-            .filter(|(f, _)| filter.contains(f))
-            .collect(),
-        None => files,
-    };
-    let parent_ref = backend
-        .get_parent_ref_or_empty(commit_id)
-        .unwrap_or_default();
-    let source = DiffSource::Vcs {
-        old_ref: parent_ref,
-        new_ref: Some(commit_id.to_string()),
-    };
-    let mut diffs: Vec<FileDiff> = files
-        .into_iter()
-        .map(|(filename, status)| FileDiff::pending(filename, status))
-        .collect();
+    let (mut diffs, source) = pending_diffs_for_refs(
+        &DiffRefs::Single(commit_id.to_string()),
+        file_filter.as_deref(),
+        backend,
+    );
     load_all_file_contents(&mut diffs, &source, backend);
     diffs
 }

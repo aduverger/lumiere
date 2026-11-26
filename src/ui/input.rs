@@ -576,16 +576,14 @@ impl<'a> App<'a> {
                 });
             }
             ModalResult::AnnotationJump { annotation_id } => {
-                if let Some(idx) = self.state.file_index_for_thread(&annotation_id) {
-                    self.state.ensure_file_loaded(idx, self.backend);
-                }
+                self.state
+                    .ensure_thread_file_loaded(&annotation_id, self.backend);
                 show_thread(&mut self.state, &annotation_id);
                 self.active_modal = None;
             }
             ModalResult::AnnotationEdit { annotation_id } => {
-                if let Some(idx) = self.state.file_index_for_thread(&annotation_id) {
-                    self.state.ensure_file_loaded(idx, self.backend);
-                }
+                self.state
+                    .ensure_thread_file_loaded(&annotation_id, self.backend);
                 if show_thread(&mut self.state, &annotation_id) {
                     self.annotation_editor = self
                         .state

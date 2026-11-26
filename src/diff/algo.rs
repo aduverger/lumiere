@@ -105,19 +105,19 @@ fn line_similarity(a: &str, b: &str) -> f64 {
         return 1.0;
     }
 
-    let a_chars: Vec<char> = a.chars().collect();
-    let b_chars: Vec<char> = b.chars().collect();
-    let min_chars = a_chars.len().min(b_chars.len());
-    let max_chars = a_chars.len().max(b_chars.len());
-    let prefix = a_chars
-        .iter()
-        .zip(&b_chars)
+    let a_len = a.chars().count();
+    let b_len = b.chars().count();
+    let min_chars = a_len.min(b_len);
+    let max_chars = a_len.max(b_len);
+    let prefix = a
+        .chars()
+        .zip(b.chars())
         .take_while(|(ca, cb)| ca == cb)
         .count();
-    let suffix = a_chars[prefix..]
-        .iter()
+    let suffix = a
+        .chars()
         .rev()
-        .zip(b_chars[prefix..].iter().rev())
+        .zip(b.chars().rev())
         .take(min_chars - prefix)
         .take_while(|(ca, cb)| ca == cb)
         .count();
@@ -164,7 +164,6 @@ fn find_best_line_pairs(
 
     let stride = n + 1;
     let mut dp = vec![0u32; (m + 1) * stride];
-    let mut matched = vec![false; m * n];
 
     for di in 0..m {
         let j_start = di.saturating_sub(MAX_PAIRING_OFFSET);
@@ -180,11 +179,7 @@ fn find_best_line_pairs(
                     let bonus = ((score * 1000.0) as u32)
                         .saturating_sub(di.abs_diff(ii) as u32)
                         .max(1);
-                    let candidate = dp[di * stride + ii] + bonus;
-                    if candidate > best {
-                        best = candidate;
-                        matched[di * n + ii] = true;
-                    }
+                    best = best.max(dp[di * stride + ii] + bonus);
                 }
             }
             dp[(di + 1) * stride + (ii + 1)] = best;
@@ -195,13 +190,13 @@ fn find_best_line_pairs(
     let mut di = m;
     let mut ii = n;
     while di > 0 && ii > 0 {
-        if matched[(di - 1) * n + (ii - 1)]
-            && dp[di * stride + ii] > dp[(di - 1) * stride + ii].max(dp[di * stride + (ii - 1)])
-        {
+        let skip_d = dp[(di - 1) * stride + ii];
+        let skip_i = dp[di * stride + (ii - 1)];
+        if dp[di * stride + ii] > skip_d.max(skip_i) {
             pairs.push((di - 1, ii - 1));
             di -= 1;
             ii -= 1;
-        } else if dp[(di - 1) * stride + ii] >= dp[di * stride + (ii - 1)] {
+        } else if skip_d >= skip_i {
             di -= 1;
         } else {
             ii -= 1;
@@ -216,22 +211,14 @@ fn push_paired_row(
     old_line: Option<(usize, String)>,
     new_line: Option<(usize, String)>,
 ) {
-    let change_type = match (&old_line, &new_line) {
-        (Some(_), Some(_)) => ChangeType::Modified,
-        (Some(_), None) => ChangeType::Delete,
-        (None, Some(_)) => ChangeType::Insert,
-        (None, None) => return,
-    };
-
-    let (old_segments, new_segments) = if matches!(change_type, ChangeType::Modified) {
-        let old_text = old_line.as_ref().map(|(_, t)| t.as_str()).unwrap_or("");
-        let new_text = new_line.as_ref().map(|(_, t)| t.as_str()).unwrap_or("");
-        match compute_word_diff(old_text, new_text) {
-            Some((old_segs, new_segs)) => (Some(old_segs), Some(new_segs)),
-            None => (None, None),
+    let (change_type, old_segments, new_segments) = match (&old_line, &new_line) {
+        (Some((_, old_text)), Some((_, new_text))) => {
+            let (old_segs, new_segs) = compute_word_diff(old_text, new_text).unzip();
+            (ChangeType::Modified, old_segs, new_segs)
         }
-    } else {
-        (None, None)
+        (Some(_), None) => (ChangeType::Delete, None, None),
+        (None, Some(_)) => (ChangeType::Insert, None, None),
+        (None, None) => return,
     };
 
     lines.push(DiffLine {
@@ -244,6 +231,16 @@ fn push_paired_row(
     });
 }
 
+fn push_positional_rows(
+    lines: &mut Vec<DiffLine>,
+    deletions: &[(usize, String)],
+    insertions: &[(usize, String)],
+) {
+    for j in 0..deletions.len().max(insertions.len()) {
+        push_paired_row(lines, deletions.get(j).cloned(), insertions.get(j).cloned());
+    }
+}
+
 fn emit_replace_block(
     lines: &mut Vec<DiffLine>,
     deletions: &[(usize, String)],
@@ -254,11 +251,7 @@ fn emit_replace_block(
     let mut prev_i = 0usize;
 
     for (d_idx, i_idx) in pairs {
-        let gap_d = &deletions[prev_d..d_idx];
-        let gap_i = &insertions[prev_i..i_idx];
-        for j in 0..gap_d.len().max(gap_i.len()) {
-            push_paired_row(lines, gap_d.get(j).cloned(), gap_i.get(j).cloned());
-        }
+        push_positional_rows(lines, &deletions[prev_d..d_idx], &insertions[prev_i..i_idx]);
         push_paired_row(
             lines,
             Some(deletions[d_idx].clone()),
@@ -268,11 +261,7 @@ fn emit_replace_block(
         prev_i = i_idx + 1;
     }
 
-    let tail_d = &deletions[prev_d..];
-    let tail_i = &insertions[prev_i..];
-    for j in 0..tail_d.len().max(tail_i.len()) {
-        push_paired_row(lines, tail_d.get(j).cloned(), tail_i.get(j).cloned());
-    }
+    push_positional_rows(lines, &deletions[prev_d..], &insertions[prev_i..]);
 }
 
 /// Computes a side-by-side diff pairing consecutive deletions with following insertions.
