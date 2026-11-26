@@ -41,22 +41,22 @@ End-to-end PTY benchmarks run with [`bench/bench.py`](https://github.com/aduverg
 
 | Metric | **Lumiere** (`0.1.0`) | **plannotator-tui** (`0.12.0`, `diffs-rs`) | **hunk** (`0.25.0`) | **lumen** (`2.32.0`) |
 | --- | ---: | ---: | ---: | ---: |
-| Start (`small` repo, 3 files) | **21.7 ms** | 51.2 ms | 481.5 ms | 577.9 ms |
-| Peak memory (`small` repo) | **8.6 MB** | 16.5 MB | 211.9 MB | 41.1 MB |
-| Start (`small` repo, `--watch`) | **18.2 ms** | *no watch* | 511.7 ms | 579.6 ms |
-| File change to screen (`--watch`) | 553.9 ms³ | *no watch* | **278.1 ms** | 3.2 ms⁴ |
+| Start (`small` repo, 3 files) | **29.0 ms** | 51.2 ms | 481.5 ms | 577.9 ms |
+| Peak memory (`small` repo) | **12.2 MB** | 16.5 MB | 211.9 MB | 41.1 MB |
+| Start (`small` repo, `--watch`) | **18.1 ms** | *no watch* | 511.7 ms | 579.6 ms |
+| File change to screen (`--watch`) | 553.4 ms³ | *no watch* | **278.1 ms** | 3.2 ms⁴ |
 | Idle CPU (`--watch`, over 4 s) | **0.0%** | *no watch* | 0.3% | 1.5%⁴ |
-| Start (`many` repo, 300 files) | **65.9 ms** | 239.8 ms | 851.5 ms | 656.0 ms |
-| First key answered (`many`) | 5.7 ms | **2.4 ms** | 85.9 ms | 5.5 ms |
-| Next file (`many`) | 4.4 ms | **1.0 ms** | 14.2 ms | 5.8 ms |
-| Start (`many` repo, `--watch`) | **73.8 ms** | *no watch* | 905.4 ms | 666.9 ms |
-| Start (`large` repo, 360k-line file) | 199.8 ms | **151.8 ms** | 516.4 ms | 755.5 ms |
-| Open the 360k-line file (`5.3 MiB`) | **210.8 ms** | *streamed¹* | *skipped²* | 5,590.0 ms |
-| Toggle whole-file view (`5.3 MiB`) | **185.4 ms** | *capped (5 MiB)¹* | *skipped²* | *n/a* |
-| Peak memory (`large` repo) | 128.7 MB | **16.7 MB¹** | 197.6 MB² | 1,109.5 MB |
-| Start (`large` repo, `--watch`) | **202.3 ms** | *no watch* | 658.7 ms | 749.6 ms |
-| Start (`ignored` repo, 8k `.venv` dirs) | **19.4 ms** | 49.4 ms | 467.3 ms | 575.7 ms |
-| Start (`ignored` repo, `--watch`) | **21.4 ms** | *no watch* | 515.1 ms | 1,004.5 ms |
+| Start (`many` repo, 300 files) | **24.6 ms** | 239.8 ms | 851.5 ms | 656.0 ms |
+| First key answered (`many`) | 7.2 ms | **2.4 ms** | 85.9 ms | 5.5 ms |
+| Next file (`many`) | 4.6 ms | **1.0 ms** | 14.2 ms | 5.8 ms |
+| Start (`many` repo, `--watch`) | **25.6 ms** | *no watch* | 905.4 ms | 666.9 ms |
+| Start (`large` repo, 360k-line file) | **22.6 ms** | 151.8 ms | 516.4 ms | 755.5 ms |
+| Open the 360k-line file (`5.3 MiB`) | **168.7 ms** | *streamed¹* | *skipped²* | 5,590.0 ms |
+| Toggle whole-file view (`5.3 MiB`) | **111.5 ms** | *capped (5 MiB)¹* | *skipped²* | *n/a* |
+| Peak memory (`large` repo) | 155.7 MB | **16.7 MB¹** | 197.6 MB² | 1,109.5 MB |
+| Start (`large` repo, `--watch`) | **19.1 ms** | *no watch* | 658.7 ms | 749.6 ms |
+| Start (`ignored` repo, 8k `.venv` dirs) | **20.0 ms** | 49.4 ms | 467.3 ms | 575.7 ms |
+| Start (`ignored` repo, `--watch`) | **25.2 ms** | *no watch* | 515.1 ms | 1,004.5 ms |
 
 1. **`plannotator-tui`** streams only the unified patch hunks in a continuous view (so `z_large.py`'s first hunk is already on screen at startup with just `16.7 MB` RSS), and caps its whole-file view (`o`) at 5 MiB (`z_large.py is 5.3 MiB; the whole-file view shows files up to 5 MiB.`).
 2. **`hunk`** does not auto-render the 5.3 MiB file (`File too large to render automatically.`), so `open the large file` and `whole file view` are skipped.

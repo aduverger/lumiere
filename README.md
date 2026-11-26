@@ -51,7 +51,7 @@ Lumiere is a fast, side-by-side terminal diff viewer written in Rust for reviewi
 - **Hunks-only by default, full file one key away** — Opens focused on changes with three context lines around each hunk (like GitHub PR reviews); press `z` to switch to full files while keeping your hunk in place.
 - **Multi-repository workspaces** — Run `lumiere diff` in a parent folder containing multiple repositories (`api/`, `web/`, …), switch with `R`, and dispatch queued feedback across every repository in one message.
 - **GitHub PRs & stacked commits** — Review PRs via `--pr` / `--detect-pr` with GitHub viewed-file sync, or step commit-by-commit through a range with `--stacked`.
-- **Git & Jujutsu native, built for speed** — Uses vendored `libgit2` and `jj-lib` directly, lazy per-language Tree-sitter highlighting, cached diff metrics, and event-driven redraws (~22 ms startup, ~0% idle watch CPU).
+- **Git & Jujutsu native, built for speed** — Uses vendored `libgit2` and `jj-lib` directly, lazy per-file blob loading, lazy per-language Tree-sitter highlighting, cached diff metrics, and event-driven redraws (~25 ms startup even on 300-file and 360k-line repos, 0% idle watch CPU).
 - **`pi` coding agent integration** — Includes a [`/lumiere`](pi-extension/) extension for [pi](https://github.com/earendil-works/pi).
 
 ## Install
@@ -121,14 +121,14 @@ Median of 5 runs on Linux (`aarch64`, 2 vCPU) using [`bench/bench.py`](bench/ben
 
 | Metric | **Lumiere** | **plannotator-tui** (`diffs-rs`) | **hunk** | **lumen** |
 | --- | ---: | ---: | ---: | ---: |
-| Start (`small`, 3 files) | **21.7 ms** | 51.2 ms | 481.5 ms | 577.9 ms |
-| Peak RAM (`small`) | **8.6 MB** | 16.5 MB | 211.9 MB | 41.1 MB |
-| Start (`many`, 300 files) | **65.9 ms** | 239.8 ms | 851.5 ms | 656.0 ms |
-| First key / next file (`many`) | 5.7 / 4.4 ms | **2.4 / 1.0 ms** | 85.9 / 14.2 ms | 5.5 / 5.8 ms |
-| Start (`large`, 360k-line / 5.3 MiB file) | 199.8 ms | **151.8 ms** | 516.4 ms | 755.5 ms |
-| Open 360k-line file / whole-file view | **210.8 / 185.4 ms** | *streamed / capped¹* | *skipped²* | 5,590 ms / *n/a* |
-| Peak RAM (`large`) | 128.7 MB | **16.7 MB¹** | 197.6 MB² | 1,109.5 MB |
-| Start (`ignored`, 8k `.venv` dirs, `--watch`) | **21.4 ms** | *no watch* | 515.1 ms | 1,004.5 ms |
+| Start (`small`, 3 files) | **29.0 ms** | 51.2 ms | 481.5 ms | 577.9 ms |
+| Peak RAM (`small`) | **12.2 MB** | 16.5 MB | 211.9 MB | 41.1 MB |
+| Start (`many`, 300 files) | **24.6 ms** | 239.8 ms | 851.5 ms | 656.0 ms |
+| First key / next file (`many`) | 7.2 / 4.6 ms | **2.4 / 1.0 ms** | 85.9 / 14.2 ms | 5.5 / 5.8 ms |
+| Start (`large`, 360k-line / 5.3 MiB file) | **22.6 ms** | 151.8 ms | 516.4 ms | 755.5 ms |
+| Open 360k-line file / whole-file view | **168.7 / 111.5 ms** | *streamed / capped¹* | *skipped²* | 5,590 ms / *n/a* |
+| Peak RAM (`large`) | 155.7 MB | **16.7 MB¹** | 197.6 MB² | 1,109.5 MB |
+| Start (`ignored`, 8k `.venv` dirs, `--watch`) | **25.2 ms** | *no watch* | 515.1 ms | 1,004.5 ms |
 | Idle CPU (`--watch`, 4 s) | **0.0%** | *no watch* | 0.3% | 1.5%³ |
 
 <sup>¹ `plannotator-tui` streams only patch hunks (very low RAM) and caps whole-file view at 5 MiB. ² `hunk` prints "File too large to render automatically." on the 5.3 MiB file. ³ `lumen 2.32.0` reloads continuously on `Access` events in watch mode. Run `bench/bench.py` yourself to reproduce on your hardware — full 13-metric table in [docs/src/comparison.md](docs/src/comparison.md).</sup>
