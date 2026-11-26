@@ -1,51 +1,80 @@
-<p align="center"><img src="assets/logo.svg" width="112" alt="Lumiere logo" /></p>
+<p align="center"><img src="assets/logo.svg" width="104" alt="Lumiere logo" /></p>
 
 <h1 align="center">Lumiere</h1>
 
-<p align="center">Review diffs in the terminal and discuss them with your coding agent.</p>
+<p align="center">
+  <strong>Review diffs in the terminal and discuss them live with your coding agent.</strong>
+</p>
 
 <p align="center">
-  <a href="https://aduverger.github.io/lumiere/">Documentation</a> ·
+  <a href="https://lumiere.computer">Website & Docs</a> ·
+  <a href="#install">Install</a> ·
   <a href="#quick-start">Quick Start</a> ·
-  <a href="#review-threads">Review Threads</a> ·
+  <a href="#comparison">Comparison</a> ·
+  <a href="#going-deeper">Reference</a> ·
   <a href="#development">Development</a>
 </p>
 
-Lumiere is a side-by-side diff viewer for the terminal. You comment on the lines an
-agent wrote; the agent answers inside the same thread while the review stays open.
+<p align="center">
+  <a href="https://github.com/aduverger/lumiere/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduverger/lumiere/ci.yml?branch=main&style=flat-square&label=CI" alt="CI" /></a>
+  <a href="https://github.com/aduverger/lumiere/releases"><img src="https://img.shields.io/github/v/release/aduverger/lumiere?style=flat-square" alt="Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
+  <img src="https://img.shields.io/badge/rust-1.89%2B-orange?style=flat-square" alt="Rust 1.89+" />
+</p>
 
-- Side-by-side diffs with syntax highlighting, search, watch mode and stacked commits
-- Hunks-only view, as on GitHub, or whole files
-- Review threads on a selection, a hunk or a file, answered live by the agent
-- One review across the repositories of a workspace folder
-- GitHub pull requests with `--pr`
-- Git and Jujutsu
-- A `/lumiere` command for the [pi](https://github.com/earendil-works/pi) coding agent
+Lumiere is a fast, side-by-side terminal diff viewer written in Rust for reviewing code alongside a coding agent. Open uncommitted work, a feature branch, a commit range, a GitHub PR, or a whole folder of repositories — comment directly on hunks or line selections, and watch your agent answer inside the same inline thread without leaving the review.
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/screenshots/diff.png" alt="A file shown side by side, old on the left and new on the right" /><br /><sub>Side by side, with the whole file.</sub></td>
-    <td width="50%"><img src="assets/screenshots/hunks-only.png" alt="The same file with unchanged lines folded" /><br /><sub><code>z</code> folds the unchanged lines.</sub></td>
-  </tr>
-  <tr>
-    <td><img src="assets/screenshots/thread.png" alt="A comment on a hunk and the agent's reply under it" /><br /><sub>Comment on a hunk; the agent answers in the thread.</sub></td>
-    <td><img src="assets/screenshots/agents.png" alt="The list of coding agents found in the repository" /><br /><sub><code>A</code> lists the agents running in the repository.</sub></td>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/hunks-only.png" alt="Hunks-only side-by-side diff folding unchanged lines" />
+      <br />
+      <sub>Hunks-only view by default — press <code>z</code> to unfold the full file.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/thread.png" alt="Inline review thread with live agent reply" />
+      <br />
+      <sub>Comment on a selection, hunk, or file — your agent replies live in the same thread.</sub>
+    </td>
   </tr>
 </table>
 
-Lumiere is a fork of [Lumen](https://github.com/jnsahaj/lumen) by Sahaj Jain. See
-[Relation to Lumen](#relation-to-lumen).
+## How it works
+
+1. **Open any diff** — working tree changes, a feature branch (`origin/main...-`), a commit range, a GitHub PR (`--pr 123`), or a multi-repo workspace directory.
+2. **Comment right on the code** — focus a hunk (`[` / `]`) or drag with the mouse, press `i`, and hit `Enter` to send immediately (or `Alt+Enter` / `Ctrl+S` to queue a batch and send together with `s`).
+3. **Iterate inside the thread** — Lumiere dispatches the exact file, lines, code context, and reply command to your coding agent. When the agent answers with `lumiere thread reply`, its Markdown-formatted response appears live in the open TUI.
+
+### Highlights
+
+- **Two-way review threads, not one-way notes** — Inline threads anchored to selections, hunks, or files with Markdown + syntax-highlighted code blocks, queued batches, resolve/reopen tracking, and a focused modal for long discussions.
+- **Hunks-only by default, full file one key away** — Opens focused on changes with three context lines around each hunk (like GitHub PR reviews); press `z` to switch to full files while keeping your hunk in place.
+- **Multi-repository workspaces** — Run `lumiere diff` in a parent folder containing multiple repositories (`api/`, `web/`, …), switch with `R`, and dispatch queued feedback across every repository in one message.
+- **GitHub PRs & stacked commits** — Review PRs via `--pr` / `--detect-pr` with GitHub viewed-file sync, or step commit-by-commit through a range with `--stacked`.
+- **Git & Jujutsu native, built for speed** — Uses vendored `libgit2` and `jj-lib` directly, lazy per-file blob loading, lazy per-language Tree-sitter highlighting, cached diff metrics, and event-driven redraws (~25 ms startup even on 300-file and 360k-line repos, 0% idle watch CPU).
+- **`pi` coding agent integration** — Includes a [`/lumiere`](pi-extension/) extension for [pi](https://github.com/earendil-works/pi).
 
 ## Install
 
-Lumiere needs Rust 1.89 or later.
+### Pre-built binaries
+
+Download a `.tar.gz` archive (Linux `x86_64`, macOS `aarch64` / `x86_64`) with its `.sha256` checksum from [GitHub Releases](https://github.com/aduverger/lumiere/releases).
+
+### Cargo (Rust 1.89+)
 
 ```bash
 cargo install --git https://github.com/aduverger/lumiere --locked
 ```
 
-From a checkout, use `cargo install --path . --locked`. Both install the `lumiere`
-binary in `~/.cargo/bin`.
+From a local checkout: `cargo install --path . --locked` (add `--no-default-features` to build Git-only without `jj-lib`).
+
+### Nix flake
+
+```bash
+nix run github:aduverger/lumiere -- diff
+# or install into your profile:
+nix profile install github:aduverger/lumiere
+```
 
 ## Quick start
 
@@ -53,102 +82,118 @@ binary in `~/.cargo/bin`.
 lumiere diff                    # uncommitted changes
 lumiere diff origin/main...-    # everything this branch adds, uncommitted changes included
 lumiere diff HEAD~3..HEAD       # a range of commits
-lumiere diff --pr 123           # a GitHub pull request (needs the gh CLI)
+lumiere diff --pr 123           # a GitHub pull request (uses gh CLI)
+lumiere diff -w                 # watch mode: auto-reload on file changes
 ```
 
-Press `i` on a line to comment, `Enter` to send the comment to the agent, and `?` for
-every key.
+Inside the viewer: press `[` / `]` to jump between hunks, `i` to comment, `Enter` to send to the attached agent, `z` to toggle full file, `A` to pick an agent, and `?` for every shortcut.
 
-## What to review
+## Comparison
+
+How Lumiere compares to other interactive terminal code-review TUIs on **features** and **measured performance** (see the [full comparison guide](docs/src/comparison.md) for `diffs-rs`, `difftastic`, `delta`, `diff-so-fancy`, GNU `diff`, methodology, and complete metrics):
+
+### Features
+
+| Capability | **Lumiere** | [hunk](https://github.com/modem-dev/hunk) | [plannotator-tui](https://github.com/plannotator/plannotator-tui) | [lumen](https://github.com/jnsahaj/lumen) |
+| --- | :---: | :---: | :---: | :---: |
+| Live two-way agent threads in TUI | ✅ | ❌ | ❌ | ❌ |
+| Multi-repo workspace review | ✅ | ❌ | ❌ | ❌ |
+| Inline review comments / notes | ✅ | ✅ | ✅ | ✅ |
+| GitHub PR review | ✅ | ✅ | ✅ | ✅ |
+| Watch mode (live auto-reload) | ✅ | ✅ | ❌ | ✅ |
+| Git & Jujutsu (`jj`) support | ✅ | ✅¹ | Git only | ✅ |
+| Hunks-only & full-file toggle | ✅ | ✅ | ✅ | ❌ |
+| Split & unified / auto layouts | Side-by-side² | ✅ | ✅ | Side-by-side |
+| Git pager / stdin patch mode | ❌ | ✅ | ❌ | ❌ |
+| Markdown / plan review & gate | ❌ | ❌ | ✅ | ❌ |
+
+<sup>¹ `hunk` also supports Sapling (`sl`). ² Lumiere renders side-by-side and lets you focus one panel (`0` old, `-` new, `=` both).</sup>
+
+### Performance (`bench/bench.py`)
+
+Median of 5 runs on Linux (`aarch64`, 2 vCPU) using [`bench/bench.py`](bench/bench.py) against official release binaries (`lumiere 0.1.0`, `hunk 0.25.0`, `plannotator-tui 0.12.0` backed by `diffs-rs`, `lumen 2.32.0`). Parentheses show each tool relative to Lumiere (lower is better):
+
+| Metric | **Lumiere** | **hunk** | **plannotator-tui** (`diffs-rs`) | **lumen** |
+| --- | ---: | ---: | ---: | ---: |
+| Start (`small`, 3 files) | **29.0 ms** | 481.5 ms *(16.6×)* | 51.2 ms *(1.8×)* | 577.9 ms *(19.9×)* |
+| Peak RAM (`small`) | **12.2 MB** | 211.9 MB *(17.4×)* | 16.5 MB *(1.4×)* | 41.1 MB *(3.4×)* |
+| Start (`many`, 300 files) | **24.6 ms** | 851.5 ms *(34.6×)* | 239.8 ms *(9.7×)* | 656.0 ms *(26.7×)* |
+| First key / next file (`many`) | 7.2 / 4.6 ms | 85.9 / 14.2 ms *(11.9× / 3.1×)* | **2.4 / 1.0 ms** *(0.3× / 0.2×)* | 5.5 / 5.8 ms *(0.8× / 1.3×)* |
+| Start (`large`, 360k-line / 5.3 MiB file) | **22.6 ms** | 516.4 ms *(22.8×)* | 151.8 ms *(6.7×)* | 755.5 ms *(33.4×)* |
+| Open 360k-line file / whole-file view | **168.7 / 111.5 ms** | *skipped¹* | *streamed / capped²* | 5,590 ms *(33.1×)* / *n/a* |
+| Peak RAM (`large`) | 155.7 MB | 197.6 MB¹ *(1.3×)* | **16.7 MB²** *(0.1×)* | 1,109.5 MB *(7.1×)* |
+| Start (`ignored`, 8k `.venv` dirs, `--watch`) | **25.2 ms** | 515.1 ms *(20.4×)* | *no watch* | 1,004.5 ms *(39.9×)* |
+| Idle CPU (`--watch`, 4 s) | **0.0%** | 0.3% | *no watch* | 1.5%³ |
+
+<sup>¹ `hunk` prints "File too large to render automatically." on the 5.3 MiB file. ² `plannotator-tui` streams only patch hunks (very low RAM) and caps whole-file view at 5 MiB. ³ `lumen 2.32.0` reloads continuously on `Access` events in watch mode. Run `bench/bench.py` yourself to reproduce on your hardware — full 16-metric table in [docs/src/comparison.md](docs/src/comparison.md).</sup>
+
+---
+
+## Going deeper
+
+Full guides and architecture notes live at **[lumiere.computer](https://lumiere.computer)**. Below is a quick reference for everyday use.
+
+### What to review
 
 | Reference | Shows |
-|---|---|
-| none | Uncommitted changes |
+| --- | --- |
+| *(none)* | Uncommitted changes |
 | `SHA` | One commit |
 | `A..B` | From `A` to `B` |
 | `A...B` | From the merge base of `A` and `B` to `B` |
 | `A..-` | From `A` to the working tree |
-| `A...-` | From the merge base of `A` and the current commit to the working tree |
+| `A...-` | From the merge base of `A` and `HEAD` to the working tree |
 
-`A...-` is the form to use on a feature branch: it keeps showing only your changes
-after `A` has moved on.
+`A...-` is the form to use on a feature branch: it keeps showing only your branch's changes even after `A` moves forward.
 
 | Option | Effect |
-|---|---|
-| `--watch`, `-w` | Reload when files change |
-| `--file PATH`, `-f` | Show only these files |
-| `--focus PATH` | Open on this file |
-| `--stacked` | Show a range one commit at a time (`Ctrl+L` / `Ctrl+H`) |
-| `--pr N`, `--detect-pr` | Show a pull request, or the one of the current branch |
-| `--wrap` | Wrap long lines |
-| `--view hunks\|full` | Show only the changes, or whole files (default `hunks`) |
-| `--theme NAME`, `-t` | Colour theme |
-| `--vcs git\|jj` | Force the version control system (before `diff`) |
+| --- | --- |
+| `--watch`, `-w` | Reload automatically when files change |
+| `--file PATH`, `-f` | Show only matching files |
+| `--focus PATH` | Open focused on this file |
+| `--stacked` | Step through a commit range one commit at a time (`Ctrl+L` / `Ctrl+H`) |
+| `--pr N`, `--detect-pr` | Review a GitHub PR, or auto-detect the current branch's PR |
+| `--wrap` | Soft-wrap long diff lines |
+| `--view hunks\|full` | Start in hunks-only (default) or full-file view |
+| `--theme NAME`, `-t` | Override the colour theme |
+| `--agent-target TARGET` | Target pane/terminal ID of the coding agent (alias: `--agent-block`) |
+| `--vcs git\|jj` | Force the VCS backend (passed before `diff`) |
 
-`lumiere diff` works from any directory of a repository.
+`lumiere diff` works from any subdirectory of a repository. On Linux, `--watch` skips gitignored directories such as `node_modules` and `.venv`. Files over 1 MB are highlighted line-by-line (skipping whole-file Tree-sitter parsing and sticky enclosing-scope headers) to stay fast.
 
-- On Linux, `--watch` does not watch the folders Git ignores, such as `node_modules` or
-  `.venv`.
-- A file over 1 MB is coloured line by line, so a string or comment spanning several
-  lines may get the wrong colour, and the enclosing function is not pinned at the top.
+<p align="center">
+  <img src="assets/screenshots/diff.png" width="760" alt="Full-file side-by-side diff view with file tree sidebar" />
+  <br />
+  <sub>Full-file view (<code>z</code>) with file tree sidebar, syntax highlighting, and inline word diffs.</sub>
+</p>
 
-### Hunks only or full file
+### Review threads & coding agents
 
-By default Lumiere shows each change with three unchanged lines around it. A row such
-as `⋯ 63 unchanged lines` stands for what is hidden. `z` switches to the whole file and
-back, keeping the focused hunk in place.
-
-- Lines under a review thread stay visible, even far from a change.
-- Search in the file (`/`) covers the lines shown. Search in every file (`Ctrl+F`)
-  covers whole files, and switches to the full file when the match is hidden.
-- Added and deleted files look the same in both views.
-
-## Review threads
-
-A comment starts a thread on a selection, a hunk or a file. Select lines with the
-mouse, or focus a hunk with `[` and `]`; with neither, the comment is on the file.
-A hunk comment goes on the hunk's new lines, or on its old lines when only the old
-panel is shown (`0`).
+Select lines with the mouse, or focus a hunk with `[` / `]`; with neither, `i` opens a file-level thread. Hunk comments anchor to the hunk's new lines (or old lines when only the old panel is shown with `0`).
 
 | Key | Effect |
-|---|---|
-| `i` | Comment, or reply when the lines already have an open thread. An unsent comment is edited instead. |
-| `Enter` | Save the comment and send it to the agent now |
+| --- | --- |
+| `i` | Start a thread, reply to an open thread, or edit an unsent comment |
+| `Enter` | Save the comment and send it to the attached agent now |
 | `Option+Enter`, `Ctrl+S` | Save the comment as queued |
-| `Shift+Enter`, `Ctrl+J` | New line |
-| `s` | Send every queued comment as one message |
-| `x` | Resolve or reopen the thread. Replying to a resolved thread reopens it. |
-| `I` | List the open threads. There, `x` resolves the selected one and `r` shows or hides the resolved ones. |
-| `A` | Choose the agent, or none |
+| `Shift+Enter`, `Ctrl+J` | Insert a new line |
+| `s` | Send all queued comments together as one message |
+| `x` | Resolve or reopen a thread (replying to a resolved thread reopens it) |
+| `I` | Open the threads list (`x` resolves, `r` toggles resolved threads) |
+| `A` | Pick which coding agent to attach to (or `none`) |
 
-- **Agent.** Lumiere looks for [Rex](https://rex.dev) panes running a coding agent
-  whose working directory is a reviewed repository, the folder Lumiere was started
-  from, or a folder inside one of them. It attaches to the most recently active one;
-  `--agent-block BLOCK` names the pane instead. The footer shows the agent and its
-  state, or `no agent`.
-- **Which agents.** An agent is recognised by the
-  [status](https://www.superlogical.com/rex/docs/build/program-status) it reports to
-  Rex: pi, Claude Code, Codex (0.163 or later) and Antigravity, and by name only,
-  untested, OpenCode, Hermes and Grok. An agent that reports no status is not found.
-  The agent may ask your permission before it runs `lumiere thread reply`.
-- **Agent waiting for you.** While the agent is asking you something, such as a
-  permission, nothing is sent and the comment stays queued: submitting would answer
-  its question. Answer the agent, then press `s`.
-- **Sending.** Lumiere pastes one message into the agent's prompt and submits it. The
-  message holds each comment with its thread id, file, lines and code, and the command
-  to reply with. A follow-up in a thread leaves the code out and says how to read the
-  earlier comments. The agent is asked to reply in the thread first and to edit code
-  only after you approve there.
-- **Without an agent** `Enter` queues, and `s` exits and writes the queued comments to
-  standard output.
-- **Storage.** Threads are kept per repository, outside it, in
-  `~/.local/state/lumiere/` on Linux. They are shared by every range reviewed in that
-  repository and come back when Lumiere restarts.
-- **Outdated.** When the diff changes, a thread follows its lines if their text is
-  found unchanged at exactly one place on the same side of the file. Otherwise it is
-  marked `outdated`.
+<p align="center">
+  <img src="assets/screenshots/agents.png" width="760" alt="Agents picker modal showing running coding agents and live status" />
+  <br />
+  <sub>Press <code>A</code> to attach to any coding agent running in the repository or workspace.</sub>
+</p>
 
-The agent uses three commands, from the repository or the workspace folder:
+- **Agent discovery:** Lumiere connects to coding agents through a host-agnostic `AgentHost` layer (currently backed by [Rex](https://rex.dev) panes reporting [Program Status](https://www.superlogical.com/rex/docs/build/program-status), such as pi, Claude Code, Codex 0.163+, and Antigravity). It auto-attaches to the most recently active agent whose working directory matches the reviewed repo or workspace; `--agent-target TARGET` pins one explicitly.
+- **Safety when the agent is waiting for input:** If the agent is waiting on a confirmation prompt, Lumiere holds comments in the queue instead of submitting into its prompt. Answer the agent, then press `s`.
+- **Without an agent:** `Enter` queues comments, and `s` exits and prints the queued review to stdout.
+- **Storage & outdated anchors:** Threads persist per repository outside the repo (`~/.local/state/lumiere/` on Linux) across every range you review. When files change, threads follow their lines if the anchored text moves cleanly; otherwise they are marked `outdated`.
+
+Agents read and reply to threads with three subcommands:
 
 ```bash
 lumiere thread list [--awaiting] [--json] [--repo PATH]
@@ -156,115 +201,88 @@ lumiere thread show <thread-id> [--json] [--repo PATH]
 lumiere thread reply <thread-id> (--body TEXT | --stdin) [--repo PATH] [--author NAME]
 ```
 
-`--awaiting` keeps the open threads whose last sent comment is yours. Queued comments
-are hidden from all three commands, and a resolved thread cannot be replied to.
+### Multi-repository workspaces
 
-## Workspace reviews
-
-Run `lumiere diff` from a folder that is not a repository but has repositories
-directly inside it:
+Run `lumiere diff` from a parent folder whose immediate subdirectories are repositories:
 
 ```bash
 cd ~/code/my-workspace      # contains api/, web/, ...
 lumiere diff origin/main...-
 ```
 
-- Only immediate child directories count. Symlinks and plain folders are ignored.
-- The first repository, by name, that has changes opens first. `R` lists them all.
-- Each repository keeps its own threads, viewed files and position.
-- A repository where the requested revision does not exist stays in the list; choosing
-  it shows the error.
-- `s` sends the queued comments of every repository opened.
-- The thread list (`I`) and watch mode cover the repository on screen only.
-- `--pr`, `--detect-pr` and `--stacked` need a single repository.
+- Opens the first repository (alphabetically) that has changes; press `R` to switch repositories.
+- Each repository keeps its own threads, viewed markers, and scroll position.
+- Pressing `s` sends queued comments across every opened repository in one message.
+- Symlinks and plain non-repo folders are ignored; `--pr`, `--detect-pr`, and `--stacked` require a single repository.
 
-## pi command
+### `pi` command (`/lumiere`)
 
-`pi-extension/` adds `/lumiere` to pi. Link it once from a checkout, then run
-`/reload` in pi:
+[`pi-extension/`](pi-extension/) adds `/lumiere` to [pi](https://github.com/earendil-works/pi). Symlink it once from a checkout and run `/reload` in pi:
 
 ```bash
 ln -s "$(pwd)/pi-extension" ~/.pi/agent/extensions/lumiere
 ```
 
-```
+```text
 /lumiere                    review origin/main...- with watch mode on
-/lumiere diff HEAD~3..-     any lumiere arguments
+/lumiere diff HEAD~3..-     pass any lumiere arguments
 ```
 
-- **Inside Rex** the review opens in a pane beside pi, zoomed to fill the window, and
-  attached to that pi session. Pi keeps running behind it. Unzoom the pane to see both.
-- **Elsewhere** pi is suspended while Lumiere uses the terminal. Comment, then press
-  `s` and `Enter`: the comments are sent to the agent. `q` sends nothing.
+- **Inside Rex:** opens Lumiere in a zoomed pane beside pi, pre-attached to that session while pi keeps running.
+- **Elsewhere:** suspends pi while Lumiere owns the terminal; press `s` and `Enter` to send comments back, or `q` to cancel.
 
-`e` opens the file in pi's `EDITOR`, or in `vim` when it is not set. The value may
-carry arguments, as in `code --wait`. `LUMIERE_BIN` selects the binary when `lumiere`
-is not on `PATH`. The extension and the binary must come from the same version.
+Set `LUMIERE_BIN` if `lumiere` is not on `PATH`. The extension and binary should come from the same version.
 
-## Keys
+### Keybindings & settings
 
-`?` shows the full list:
+Press `?` inside Lumiere for the full keybinding sheet.
+
+<details>
+<summary>Common keybindings</summary>
 
 | Key | Effect |
-|---|---|
+| --- | --- |
 | `j` / `k`, arrows | Scroll, or move in a list |
 | `Option+Up` / `Option+Down`, `Option+J` / `Option+K` | Previous / next file |
 | `[` / `]` | Previous / next hunk |
 | `Ctrl+P` | File picker |
-| `/`, `Ctrl+F` | Search in the file, or in every file |
-| `Tab` | Show or hide the sidebar |
-| `Space` | Mark the file as viewed and go to the next |
+| `/`, `Ctrl+F` | Search in current file, or across every file |
+| `Tab` | Toggle the file sidebar |
+| `Space` | Mark file as viewed and advance |
 | `0` / `-` / `=` | Old side only, new side only, both |
-| `w` | Watch mode on or off |
-| `z` | Hunks only, or the full file |
-| `e` | Open the file in `EDITOR` |
-| `y` | Copy the selection, or the file name |
+| `w` | Toggle watch mode |
+| `z` | Toggle hunks-only / full file |
+| `e` | Open current file in `EDITOR` |
+| `y` | Copy selection, or current file path |
 | `R` | Switch repository in a workspace |
 | `q` | Quit |
 
-`Option` is `Alt` outside macOS.
+`Option` is `Alt` on Linux.
 
-## Settings
+</details>
 
-Lumiere reads `~/.config/lumiere/lumiere.config.json`, or the file given with
-`--config` before `diff`:
+Lumiere reads `~/.config/lumiere/lumiere.config.json` (or `--config PATH` passed before `diff`):
 
 ```json
 {
   "theme": "catppuccin-mocha",
   "wrap": true,
-  "view": "full"
+  "view": "hunks"
 }
 ```
 
-`view` is `"hunks"` (the default) or `"full"`; `--view` overrides it.
+Theme precedence: `--theme` → config file → `LUMIERE_THEME` → terminal background auto-detection.
 
-The theme comes from `--theme`, then the settings file, then `LUMIERE_THEME`, then the
-terminal's background.
+Supported themes: `dark`, `light`, `catppuccin-mocha`, `catppuccin-latte`, `dracula`, `nord`, `one-dark`, `gruvbox-dark`, `gruvbox-light`, `solarized-dark`, `solarized-light`, `flexoki-dark`, `flexoki-light`.
 
-| Theme | Value |
-|---|---|
-| Default | `dark`, `light` |
-| Catppuccin | `catppuccin-mocha`, `catppuccin-latte` |
-| Dracula | `dracula` |
-| Nord | `nord` |
-| One Dark | `one-dark` |
-| Gruvbox | `gruvbox-dark`, `gruvbox-light` |
-| Solarized | `solarized-dark`, `solarized-light` |
-| Flexoki | `flexoki-dark`, `flexoki-light` |
+### Relation to Lumen
 
-## Relation to Lumen
+Lumiere started as a fork of [Lumen](https://github.com/jnsahaj/lumen) v2.32.0 by Sahaj Jain and keeps its side-by-side diff foundation. It is now developed independently and restarts versioning at `0.1.0`:
 
-Lumiere started as a fork of [Lumen](https://github.com/jnsahaj/lumen) v2.32.0 and
-keeps its diff viewer. It is developed on its own, does not follow Lumen's
-releases, and restarts its version at 0.1.0. The main differences:
-
-- Review threads with an agent replace Lumen's one-way annotations.
-- Workspace reviews, the `A...-` reference and the pi command are new.
-- Lumen's AI commands (`draft`, `explain`, `operate`, `list`, `configure`) are removed.
-- The default view shows hunks only; Lumen always shows whole files.
-- The binary, the settings file and the environment variable are named `lumiere`.
-  Lumen's `lumen.config.json` and `LUMEN_THEME` are not read.
+- Replaces Lumen's one-way annotations with live two-way review threads backed by a coding agent.
+- Adds hunks-only view by default, multi-repository workspace reviews, the `A...-` reference, and the `pi` extension.
+- Removes Lumen's standalone LLM subcommands (`draft`, `explain`, `operate`, `list`, `configure`).
+- Uses `lumiere`, `lumiere.config.json`, and `LUMIERE_THEME` (Lumen's config and env vars are not read).
 
 ## Development
 
@@ -275,16 +293,13 @@ cargo test
 cargo test --no-default-features
 ```
 
-The codebase is organized around five core modules (`vcs`, `diff`, `review`, `search`, `ui`)
-documented in [`docs/`](docs/src/architecture/overview.md). To preview the documentation site
-locally with [mdBook](https://rust-lang.github.io/mdBook/):
+Lumiere is organized around five core primitives (`vcs`, `diff`, `review`, `search`, `ui`) documented in [`docs/`](docs/src/architecture/overview.md). Preview the documentation site locally with [mdBook](https://rust-lang.github.io/mdBook/):
 
 ```bash
 mdbook serve docs --open
 ```
 
-`bench/` measures how fast Lumiere starts and reacts, to compare a change before and
-after. See [bench/README.md](bench/README.md).
+`bench/` measures startup, memory, navigation, and watch latency across changes — see [bench/README.md](bench/README.md).
 
 ## License
 

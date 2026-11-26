@@ -6,6 +6,7 @@
 
 - [Installation](getting-started/installation.md)
 - [Quick Start](getting-started/quick-start.md)
+- [Comparison](comparison.md)
 
 # User Guide
 

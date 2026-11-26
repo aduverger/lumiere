@@ -2,6 +2,7 @@
   --lumiere-accent: #e6b450;
   --lumiere-accent-soft: rgba(230, 180, 80, 0.14);
   --lumiere-border: rgba(148, 163, 184, 0.22);
+  --lumiere-win-bg: rgba(74, 222, 128, 0.12);
 }
 
 .light,
@@ -9,6 +10,7 @@
   --lumiere-accent: #b45309;
   --lumiere-accent-soft: rgba(180, 83, 9, 0.1);
   --lumiere-border: rgba(15, 23, 42, 0.14);
+  --lumiere-win-bg: rgba(22, 163, 74, 0.1);
 }
 
 .hero {
@@ -95,6 +97,11 @@ td {
   border: 1px solid var(--lumiere-border);
   padding: 0.55rem 0.75rem;
   text-align: left;
+}
+
+.comparison-perf table th:nth-child(2),
+.comparison-perf table td:nth-child(2) {
+  background: var(--lumiere-win-bg);
 }
 
 pre > code {

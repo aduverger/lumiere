@@ -25,26 +25,29 @@ python3 bench/bench.py compare baseline candidate
 
 ## Measured results
 
-Median of 5 runs on a 2-vCPU Linux host comparing the pre-refactor release binary (`after`) against the refactored release binary (`refactored-final`):
+> [!TIP]
+> For side-by-side benchmark numbers comparing **Lumiere** against **plannotator-tui (`diffs-rs`)**, **hunk**, and **lumen**, see [Comparison — Performance comparison](../comparison.md#performance-comparison).
 
-| Metric | Before | After | Change |
+Median of 5 runs on a 2-vCPU Linux host comparing the pre-refactor release binary against the current release binary:
+
+| Metric | Before | Current | Change |
 |---|---:|---:|---:|
-| Start (`small` repo) | 45.6 ms | **21.7 ms** | **-52%** |
-| Start (`small` repo, `--watch`) | 50.8 ms | **22.4 ms** | **-56%** |
-| File change to screen (`--watch`) | 522.3 ms | **504.0 ms** | **-3%** |
+| Start (`small` repo) | 45.6 ms | **29.0 ms** | **-36%** |
+| Start (`small` repo, `--watch`) | 50.8 ms | **18.1 ms** | **-64%** |
+| File change to screen (`--watch`) | 522.3 ms | 553.4 ms | +6% |
 | Idle CPU (`--watch`) | 0.5% | **0.0%** | **-100%** |
-| Peak memory (`small` repo) | 26.4 MB | **10.2 MB** | **-61%** |
-| Start (`many` repo, 300 files) | 79.5 ms | **65.7 ms** | **-17%** |
-| First key answered | 199.8 ms | **6.1 ms** | **-97%** |
-| Next file (`Alt+k`) | 4.7 ms | **4.4 ms** | **-6%** |
-| Start (`many` repo, `--watch`) | 74.1 ms | **68.6 ms** | **-7%** |
-| Start (`large` repo, 360k lines) | 231.4 ms | **195.9 ms** | **-15%** |
-| Open the 360k-line file | 250.4 ms | **206.8 ms** | **-17%** |
-| 360k-line file, toggle full-file view (`z`) | 237.5 ms | **184.2 ms** | **-22%** |
-| Peak memory (`large` file) | 142.8 MB | **130.1 MB** | **-9%** |
-| Start (`large` repo, `--watch`) | 242.5 ms | **194.7 ms** | **-20%** |
-| Start (`ignored` repo, 8k `.venv` dirs) | 46.5 ms | **21.7 ms** | **-53%** |
-| Start (`ignored` repo, `--watch`) | 44.5 ms | **26.0 ms** | **-42%** |
+| Peak memory (`small` repo) | 26.4 MB | **12.2 MB** | **-54%** |
+| Start (`many` repo, 300 files) | 79.5 ms | **24.6 ms** | **-69%** |
+| First key answered | 199.8 ms | **7.2 ms** | **-96%** |
+| Next file (`Alt+k`) | 4.7 ms | **4.6 ms** | **-2%** |
+| Start (`many` repo, `--watch`) | 74.1 ms | **25.6 ms** | **-65%** |
+| Start (`large` repo, 360k lines) | 231.4 ms | **22.6 ms** | **-90%** |
+| Open the 360k-line file | 250.4 ms | **168.7 ms** | **-33%** |
+| 360k-line file, toggle full-file view (`z`) | 237.5 ms | **111.5 ms** | **-53%** |
+| Peak memory (`large` file) | 142.8 MB | 155.7 MB | +9% |
+| Start (`large` repo, `--watch`) | 242.5 ms | **19.1 ms** | **-92%** |
+| Start (`ignored` repo, 8k `.venv` dirs) | 46.5 ms | **20.0 ms** | **-57%** |
+| Start (`ignored` repo, `--watch`) | 44.5 ms | **25.2 ms** | **-43%** |
 
 > [!NOTE]
 > `file change to screen, watch` is intentionally bounded below by the 500 ms `GATHERING_TIME` debounce window in `diff::watcher` so editors that write temp files and rename them settle into a single reload.
@@ -69,9 +72,9 @@ Both `diff::highlight::config` and `diff::context` compile Tree-sitter `Highligh
 
 `ui::state::AppState` caches the active file's `ComputedDiff` (paired side-by-side rows, hunk indices, `LineStats`, and `max_old_width` / `max_new_width`) and the repository's current branch name. Per-frame rendering, footer statistics, and horizontal scroll clamping are O(1) instead of rescanning hundreds of thousands of lines or invoking VCS lookups on every draw.
 
-### 5. Batched VCS tree reads (-17% on 300-file repos)
+### 5. Lazy per-file blob loading, background stats, and batched reads (-69% on 300 files, -90% on 360k lines)
 
-`VcsBackend::get_files_content_at_ref` resolves the Git revision tree once per batch rather than parsing the revision and peeling to a commit/tree for every single changed file. On a 300-file diff, this avoids 299 redundant `revparse_single` lookups.
+On Git repositories, startup reads only changed file paths and statuses (`A`/`M`/`D`) from tree deltas / `libgit2` status, then loads blob contents on demand as files are opened (or on `Ctrl+F` global search and for files with persisted threads). Repo-wide `+added -removed` totals are computed asynchronously on a background thread using `libgit2`'s C `Diff::stats()` (guarded by a generation counter against stale reloads). When all files must be loaded together, `VcsBackend::get_files_content_at_ref` resolves the revision tree once per batch.
 
 ### 6. Large-file threshold (>1 MB) and zero-alloc hot paths
 
@@ -86,4 +89,4 @@ On Linux, `diff::watcher` installs non-recursive inotify watches only on non-git
 
 ### 8. Release build profile
 
-`Cargo.toml` configures `[profile.release]` with `lto = "thin"`, `codegen-units = 1`, and `strip = "symbols"`, and trims unused `git2` features (`https` / `vendored-openssl`, which Lumiere never calls because remote operations go through `gh`).
+`Cargo.toml` configures `[profile.release]` with `lto = true`, `codegen-units = 1`, and `strip = "symbols"`, and trims unused `git2` features (`https` / `vendored-openssl`, which Lumiere never calls because remote operations go through `gh`).
