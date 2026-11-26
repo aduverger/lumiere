@@ -552,7 +552,10 @@ impl<'a> App<'a> {
         }
     }
 
-    fn draw<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> io::Result<()> {
+    fn draw<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> io::Result<()>
+    where
+        io::Error: From<B::Error>,
+    {
         if self.state.file_diffs.is_empty() {
             let repo_name = self
                 .workspace_session
