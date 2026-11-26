@@ -32,9 +32,9 @@ THEMES = {
         "divider": "#e5e7eb",
         "bars": {
             "lumiere": "#e09f1f",
-            "plannotator-tui": "#3b82f6",
-            "hunk": "#94a3b8",
-            "lumen": "#cbd5e1",
+            "plannotator-tui": "#7c3aed",
+            "hunk": "#16a34a",
+            "lumen": "#94a3b8",
         },
     },
     "dark": {
@@ -50,9 +50,9 @@ THEMES = {
         "divider": "#30363d",
         "bars": {
             "lumiere": "#ffc857",
-            "plannotator-tui": "#60a5fa",
-            "hunk": "#6e7681",
-            "lumen": "#484f58",
+            "plannotator-tui": "#a78bfa",
+            "hunk": "#4ade80",
+            "lumen": "#6e7681",
         },
     },
 }
