@@ -3,7 +3,7 @@ use ratatui::{
     prelude::*,
     widgets::{Clear, Paragraph},
 };
-use tui_textarea::TextArea;
+use ratatui_textarea::TextArea;
 
 use super::theme;
 use crate::review::{AnnotationTarget, Comment, Thread};
@@ -71,8 +71,10 @@ impl<'a> AnnotationEditor<'a> {
 
         editor
             .textarea
-            .move_cursor(tui_textarea::CursorMove::Bottom);
-        editor.textarea.move_cursor(tui_textarea::CursorMove::End);
+            .move_cursor(ratatui_textarea::CursorMove::Bottom);
+        editor
+            .textarea
+            .move_cursor(ratatui_textarea::CursorMove::End);
 
         editor
     }

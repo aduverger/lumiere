@@ -5,8 +5,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use chrono::Local;
-use futures::StreamExt;
-use jj_lib::backend::TreeValue;
+use futures::{AsyncReadExt, StreamExt};
+use jj_lib::backend::{MergedTreeValue, TreeValue};
 use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
 use jj_lib::conflict_labels::ConflictLabels;
@@ -14,13 +14,16 @@ use jj_lib::conflicts::{
     materialize_merge_result_to_bytes, try_materialize_file_conflict_value, ConflictMarkerStyle,
     ConflictMaterializeOptions,
 };
+use jj_lib::default_backend_factories::{
+    default_backend_factories, default_working_copy_factories,
+};
 use jj_lib::files::FileMergeHunkLevel;
+use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::matchers::EverythingMatcher;
-use jj_lib::merge::{MergedTreeValue, SameChange};
+use jj_lib::merge::SameChange;
 use jj_lib::object_id::ObjectId;
-use jj_lib::repo::{ReadonlyRepo, Repo, StoreFactories};
+use jj_lib::repo::{ReadonlyRepo, Repo};
 use jj_lib::repo_path::RepoPath;
-use jj_lib::repo_path::RepoPathUiConverter;
 use jj_lib::revset::{
     RevsetAliasesMap, RevsetDiagnostics, RevsetExtensions, RevsetParseContext,
     RevsetWorkspaceContext, SymbolResolver, SymbolResolverExtension,
@@ -28,7 +31,8 @@ use jj_lib::revset::{
 use jj_lib::settings::UserSettings;
 use jj_lib::time_util::DatePatternContext;
 use jj_lib::tree_merge::MergeOptions;
-use jj_lib::workspace::{default_working_copy_factories, Workspace};
+use jj_lib::ui_path::RepoPathUiConverter;
+use jj_lib::workspace::Workspace;
 use pollster::FutureExt;
 
 use super::backend::{StackedCommitInfo, VcsBackend, VcsError};
@@ -126,7 +130,7 @@ impl JjBackend {
         let workspace = Workspace::load(
             &settings,
             workspace_path,
-            &StoreFactories::default(),
+            &default_backend_factories(),
             &default_working_copy_factories(),
         )
         .map_err(|e| VcsError::Other(format!("failed to load workspace: {}", e)))?;
@@ -135,6 +139,7 @@ impl JjBackend {
         let repo = workspace
             .repo_loader()
             .load_at_head()
+            .block_on()
             .map_err(|e| VcsError::Other(format!("failed to load repo: {}", e)))?;
 
         Ok(JjBackend {
@@ -168,7 +173,7 @@ impl JjBackend {
             user_email: self.settings.user_email(),
             date_pattern_context: DatePatternContext::from(Local::now()),
             default_ignored_remote: None,
-            use_glob_by_default: true,
+            fileset_aliases_map: &FilesetAliasesMap::default(),
             extensions: &RevsetExtensions::default(),
             workspace: Some(workspace_ctx),
         };
@@ -200,9 +205,8 @@ impl JjBackend {
                 .map_err(|e| VcsError::Other(format!("evaluation error: {}", e)))?;
 
             // Get the first commit
-            let mut iter = revset.iter();
-            let commit_id = iter
-                .next()
+            let commit_id = async { revset.stream().next().await }
+                .block_on()
                 .ok_or_else(|| {
                     format_ref_error(revset_str, &format!("revision '{}' not found", revset_str))
                 })?
@@ -313,6 +317,7 @@ impl VcsBackend for JjBackend {
         // Get the value at the path
         let value = tree
             .path_value(&repo_path)
+            .block_on()
             .map_err(|e| VcsError::Other(format!("failed to get path value: {}", e)))?;
 
         // Check if resolved (no conflict)
@@ -328,7 +333,7 @@ impl VcsBackend for JjBackend {
                         .block_on()
                         .map_err(|e| VcsError::Other(format!("failed to read file: {}", e)))?;
 
-                    async { tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut content).await }
+                    async { reader.read_to_end(&mut content).await }
                         .block_on()
                         .map_err(|e| VcsError::Other(format!("failed to read content: {}", e)))?;
 
@@ -444,7 +449,8 @@ impl VcsBackend for JjBackend {
 
             let mut commits = Vec::new();
 
-            for commit_id_result in revset.iter() {
+            let commit_ids: Vec<_> = async { revset.stream().collect().await }.block_on();
+            for commit_id_result in commit_ids {
                 let commit_id = commit_id_result
                     .map_err(|e| VcsError::Other(format!("iterator error: {}", e)))?;
 
