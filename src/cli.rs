@@ -97,10 +97,10 @@ pub enum Commands {
         #[arg(value_enum, long)]
         view: Option<ViewMode>,
 
-        /// Rex pane of the coding agent that answers review comments
-        /// (default: the latest active agent pane at this repository or folder)
-        #[arg(long = "agent-block", value_name = "BLOCK")]
-        agent_block: Option<String>,
+        /// Target pane or terminal ID of the coding agent that answers review comments
+        /// (default: the latest active agent at this repository or folder)
+        #[arg(long = "agent-target", alias = "agent-block", value_name = "TARGET")]
+        agent_target: Option<String>,
     },
     /// Read and answer the review threads written in `lumiere diff`
     Thread {
@@ -220,5 +220,22 @@ mod tests {
             Commands::Diff { wrap, .. } => assert!(wrap),
             _ => panic!("expected diff command"),
         }
+    }
+
+    #[test]
+    fn test_diff_agent_target_and_legacy_alias_parse() {
+        let target_of = |args: &[&str]| match Cli::try_parse_from(args).unwrap().command {
+            Commands::Diff { agent_target, .. } => agent_target,
+            _ => panic!("expected diff command"),
+        };
+
+        assert_eq!(
+            target_of(&["lumiere", "diff", "--agent-target", "pane-1"]),
+            Some("pane-1".to_string())
+        );
+        assert_eq!(
+            target_of(&["lumiere", "diff", "--agent-block", "block:1"]),
+            Some("block:1".to_string())
+        );
     }
 }

@@ -79,18 +79,25 @@ Every write goes through `ThreadStore::update`:
 
 On every loop tick, `AppState::reload_threads_if_changed()` compares `StoreStamp` (`(len, modified_time)` from a single `stat()` call) against the last loaded stamp. Whenever an agent runs `lumiere thread reply`, the stamp changes, Lumiere reloads `threads.json`, marks the frame `dirty`, and renders the reply live — even when `--watch` is off.
 
-## Rex agent protocol (`src/review/agent.rs`)
+## Agent host architecture (`src/review/agent/`)
+
+Live coding-agent integration is decoupled from any single terminal or multiplexer via the `AgentHost` trait in `src/review/agent/mod.rs` (mirroring how `vcs::VcsBackend` abstracts Git and Jujutsu):
+
+- **`AgentHost`** exposes four host operations: `list_agents(review_roots)`, `find_agent(target_hint)`, `inspect_agent(id)`, and `send_message(id, message)`.
+- **`AgentTarget` / `AgentStatus` / `AgentState`** represent an opaque host-owned target ID, human-readable location label, working directory, app name, and semantic state (`Idle`, `Working`, `Blocked`, `Done`, `Error`, `Other`, `Unknown`).
+- **`AgentLink`** owns attachment state, `Blocked` send refusal, prompt formatting, and control-character stripping without importing any host-specific types.
+- **`RexHost` (`src/review/agent/rex.rs`)** is the current `AgentHost` implementation; future hosts (such as Herdr or tmux) plug in by implementing `AgentHost` and selecting the active host in `default_host()`.
 
 ### Non-blocking `AgentWorker`
 
-Shelling out to `rex` takes tens to hundreds of milliseconds. To keep startup and typing completely stall-free, `AgentWorker::spawn` runs a dedicated background thread communicating over `std::sync::mpsc` channels:
+Shelling out to a multiplexer CLI takes tens to hundreds of milliseconds. To keep startup and typing completely stall-free, `AgentWorker::spawn` runs a dedicated background thread sharing an `Arc<dyn AgentHost>` over `std::sync::mpsc` channels:
 
-- **`AgentRequest::Attach`** — dispatched immediately on startup before the first frame; updates the footer as soon as Rex responds.
-- **`AgentRequest::Refresh`** — dispatched every 3 seconds while an agent pane is attached (never overlapping an in-flight refresh; stale responses for a previously attached pane are ignored by `(session, block)` comparison).
+- **`AgentRequest::Attach`** — dispatched immediately on startup before the first frame; updates the footer as soon as the host responds.
+- **`AgentRequest::Refresh`** — dispatched every 3 seconds while an agent target is attached (never overlapping an in-flight refresh; stale responses for a previously attached target are ignored by opaque `id` comparison).
 - **`AgentRequest::FindCandidates`** — dispatched when the user presses <kbd>A</kbd>, opening the picker immediately with cached candidates and refreshing it live when discovery finishes.
 
-### Discovery & delivery
+### Rex host discovery & delivery (`src/review/agent/rex.rs`)
 
 - Discovery executes a single Lua script via `rex do -s <session> --json` to read each terminal block's `process` (foreground PID and CWD) and `program_status` (OSC 7501 records).
 - Only panes where a recognized coding agent's status `owner.pid == foreground.pid` and whose CWD is inside one of the `review_roots` qualify.
-- Delivery (`send_comments`) performs a live pane refresh first, aborts if the agent exited or its state is `"blocked"`, strips non-newline control characters, wraps the prompt in bracketed paste (`\x1b[200~...\x1b[201~`), and submits with `rex send-key ... enter`.
+- Delivery (`AgentLink::send_comments`) performs a live `inspect_agent` refresh first, aborts if the agent exited or its state is `AgentState::Blocked`, strips non-newline control characters, and delegates to `RexHost::send_message`, which wraps the prompt in bracketed paste (`\x1b[200~...\x1b[201~`) and submits with `rex send-key ... enter`.

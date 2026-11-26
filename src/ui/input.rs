@@ -11,7 +11,7 @@ use crate::diff::{
     hunk_comment_lines, hunk_lines_on, load_single_commit_diffs, DiffFullscreen, DiffLine,
     DiffOptions, DiffPanelFocus,
 };
-use crate::review::agent::{AgentLink, AgentPane, AgentRequest};
+use crate::review::agent::{AgentLink, AgentRequest, AgentTarget};
 use crate::review::{AnnotationTarget, Thread};
 use crate::search::global::GlobalSearchState;
 use crate::search::MatchPanel;
@@ -237,36 +237,31 @@ pub fn threads_modal(
     Modal::annotations(title, items, listed_threads, selected)
 }
 
-pub fn agent_picker(agent: &AgentLink<'_>) -> Modal {
+pub fn agent_picker(agent: &AgentLink) -> Modal {
     agent_picker_with_selection(agent, None)
 }
 
 pub fn agent_picker_with_selection(
-    agent: &AgentLink<'_>,
-    highlighted_target: Option<Option<(&str, &str)>>,
+    agent: &AgentLink,
+    highlighted_id: Option<Option<&str>>,
 ) -> Modal {
-    let panes = agent.known_candidates();
-    let selected = match highlighted_target {
+    let targets = agent.known_candidates();
+    let attached_selected = || {
+        targets
+            .iter()
+            .position(|target| Some(target.id.as_str()) == agent.attached_id())
+            .map_or(0, |index| index + 1)
+    };
+    let selected = match highlighted_id {
         Some(None) => 0,
-        Some(Some((session, block))) => panes
+        Some(Some(id)) => targets
             .iter()
-            .position(|pane| pane.session == session && pane.block == block)
-            .map_or_else(
-                || {
-                    panes
-                        .iter()
-                        .position(|pane| Some(pane.block.as_str()) == agent.attached_block())
-                        .map_or(0, |index| index + 1)
-                },
-                |index| index + 1,
-            ),
-        None => panes
-            .iter()
-            .position(|pane| Some(pane.block.as_str()) == agent.attached_block())
-            .map_or(0, |index| index + 1),
+            .position(|target| target.id == id)
+            .map_or_else(attached_selected, |index| index + 1),
+        None => attached_selected(),
     };
     let mut items = vec!["none".to_string()];
-    items.extend(panes.iter().map(AgentPane::picker_label));
+    items.extend(targets.iter().map(AgentTarget::picker_label));
     Modal::select("Agents", items, selected)
 }
 
@@ -700,10 +695,10 @@ impl<'a> App<'a> {
                         }
                     }
                     Some(Picker::Agent) => {
-                        let pane = selected_index
+                        let target = selected_index
                             .checked_sub(1)
                             .and_then(|idx| self.agent.known_candidates().get(idx).cloned());
-                        self.agent.set_pane(pane);
+                        self.agent.set_target(target);
                     }
                     Some(Picker::Quit) => match selected_index {
                         0 if self.agent.is_attached() => match self.send_queued(None) {

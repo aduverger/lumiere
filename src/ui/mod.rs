@@ -13,7 +13,7 @@ use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
-use std::sync::Once;
+use std::sync::{Arc, Once};
 use std::time::{Duration, Instant};
 
 use crossterm::{
@@ -37,7 +37,7 @@ use crate::diff::{
     load_file_diffs, load_single_commit_diffs, validate_reference, DiffOptions, FileDiff,
 };
 use crate::error::LumiereError;
-use crate::review::agent::{AgentLink, AgentRequest, AgentResponse, AgentWorker, RexCli};
+use crate::review::agent::{default_host, AgentLink, AgentRequest, AgentResponse, AgentWorker};
 use crate::review::Workspace;
 use crate::ui::editor::AnnotationEditor;
 use crate::ui::input::{
@@ -53,7 +53,6 @@ use crate::vcs::{CommitReference, StackedCommitInfo, VcsBackend};
 
 const LARGE_FILE_NOTICE: &str = "large file: colours are approximate";
 
-static REX_CLI: RexCli = RexCli;
 static TERMINAL_ACTIVE: AtomicBool = AtomicBool::new(false);
 static PANIC_HOOK_INSTALLED: Once = Once::new();
 
@@ -206,7 +205,7 @@ pub struct App<'a> {
     pub watch_handle: Option<WatchHandle>,
     pub watch_rx: Option<Receiver<WatchEvent>>,
     pub review_roots: Vec<PathBuf>,
-    pub agent: AgentLink<'a>,
+    pub agent: AgentLink,
     pub agent_worker: AgentWorker,
     pub agent_refreshed_at: Instant,
     pub agent_refreshes_in_flight: usize,
@@ -275,11 +274,11 @@ impl<'a> App<'a> {
         };
         review_roots.extend(launch_dir);
 
-        let agent = AgentLink::new(&REX_CLI, review_path);
-        let agent_worker = AgentWorker::spawn(Box::new(RexCli));
+        let host = default_host();
+        let agent = AgentLink::new(Arc::clone(&host), review_path);
+        let agent_worker = AgentWorker::spawn(host);
         agent_worker.request(AgentRequest::Attach {
-            agent_block: options.agent_block.clone(),
-            current_session: std::env::var("REX_SESSION").ok(),
+            target: options.agent_target.clone(),
             review_roots: review_roots.clone(),
         });
 
@@ -334,16 +333,16 @@ impl<'a> App<'a> {
                         .map_or(0, WorkspaceSession::mark_parked_sent)
             }
         };
-        if let Some((session, block)) = self.agent.attached_target() {
+        if let Some(id) = self.agent.attached_id() {
             self.agent_worker
-                .request(AgentRequest::Refresh { session, block });
+                .request(AgentRequest::Refresh { id: id.to_string() });
             self.agent_refreshes_in_flight += 1;
             self.agent_refreshed_at = Instant::now();
         }
         Ok(format!("sent {} to the agent", count_of(sent, "comment")))
     }
 
-    fn highlighted_agent_picker_target(&self) -> Option<Option<(String, String)>> {
+    fn highlighted_agent_picker_target(&self) -> Option<Option<String>> {
         if !matches!(self.open_picker, Some(Picker::Agent)) {
             return None;
         }
@@ -362,15 +361,13 @@ impl<'a> App<'a> {
         } else {
             candidates
                 .get(selected - 1)
-                .map(|pane| Some((pane.session.clone(), pane.block.clone())))
+                .map(|target| Some(target.id.clone()))
         }
     }
 
-    fn refresh_open_agent_picker(&mut self, highlighted: Option<Option<(String, String)>>) {
+    fn refresh_open_agent_picker(&mut self, highlighted: Option<Option<String>>) {
         if matches!(self.open_picker, Some(Picker::Agent)) {
-            let target_ref = highlighted
-                .as_ref()
-                .map(|opt| opt.as_ref().map(|(s, b)| (s.as_str(), b.as_str())));
+            let target_ref = highlighted.as_ref().map(|opt| opt.as_deref());
             self.active_modal = Some(agent_picker_with_selection(&self.agent, target_ref));
             self.dirty = true;
         }
@@ -390,14 +387,10 @@ impl<'a> App<'a> {
                     self.refresh_open_agent_picker(highlighted);
                     self.dirty = true;
                 }
-                AgentResponse::Refreshed {
-                    session,
-                    block,
-                    status,
-                } => {
+                AgentResponse::Refreshed { id, status } => {
                     self.agent_refreshes_in_flight =
                         self.agent_refreshes_in_flight.saturating_sub(1);
-                    if self.agent.apply_refresh(&session, &block, status) {
+                    if self.agent.apply_refresh(&id, status) {
                         self.dirty = true;
                     }
                 }
@@ -413,9 +406,9 @@ impl<'a> App<'a> {
             && self.agent_refreshes_in_flight == 0
             && self.agent_refreshed_at.elapsed() > Duration::from_secs(3)
         {
-            if let Some((session, block)) = self.agent.attached_target() {
+            if let Some(id) = self.agent.attached_id() {
                 self.agent_worker
-                    .request(AgentRequest::Refresh { session, block });
+                    .request(AgentRequest::Refresh { id: id.to_string() });
                 self.agent_refreshes_in_flight += 1;
             }
             self.agent_refreshed_at = Instant::now();
@@ -847,49 +840,47 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::review::agent::{PaneStatus, Rex, RexPane, RexSession};
+    use crate::review::agent::{AgentHost, AgentState, AgentStatus, AgentTarget};
     use crate::vcs::test_utils::git;
     use crate::vcs::GitBackend;
 
-    #[derive(Clone)]
-    struct StubRex {
+    struct StubHost {
         root: PathBuf,
     }
 
-    impl Rex for StubRex {
-        fn sessions(&self) -> Vec<RexSession> {
-            vec![RexSession {
-                id: "s1".to_string(),
-                label: "work".to_string(),
-            }]
-        }
-
-        fn terminal_panes(&self, _session: &str) -> Vec<RexPane> {
-            vec![RexPane {
-                block: "b1".to_string(),
+    impl StubHost {
+        fn target(&self, id: &str) -> AgentTarget {
+            AgentTarget {
+                id: id.to_string(),
+                location: "work".to_string(),
                 cwd: self.root.clone(),
-                foreground_pid: Some(42),
-                statuses: vec![PaneStatus {
+                status: AgentStatus {
                     app: "pi".to_string(),
-                    state: "idle".to_string(),
+                    state: AgentState::Idle,
                     updated_at: "2026-11-25T10:00:00Z".to_string(),
-                    owner_pid: Some(42),
-                }],
-            }]
+                },
+            }
+        }
+    }
+
+    impl AgentHost for StubHost {
+        fn name(&self) -> &'static str {
+            "stub"
         }
 
-        fn terminal_pane(&self, session: &str, block: &str) -> Option<RexPane> {
-            self.terminal_panes(session)
-                .into_iter()
-                .find(|p| p.block == block)
+        fn list_agents(&self, _review_roots: &[PathBuf]) -> Vec<AgentTarget> {
+            vec![self.target("b1")]
         }
 
-        fn submit_message(
-            &self,
-            _session: &str,
-            _block: &str,
-            _message: &str,
-        ) -> Result<(), String> {
+        fn find_agent(&self, target_hint: &str) -> Option<AgentTarget> {
+            (target_hint == "b1").then(|| self.target("b1"))
+        }
+
+        fn inspect_agent(&self, id: &str) -> Option<AgentStatus> {
+            (id == "b1").then(|| self.target("b1").status)
+        }
+
+        fn send_message(&self, _id: &str, _message: &str) -> Result<(), String> {
             Ok(())
         }
     }
@@ -914,7 +905,7 @@ mod tests {
         Event::Key(KeyEvent::new(code, modifiers))
     }
 
-    fn test_app<'a>(backend: &'a GitBackend, rex: &'a StubRex, root: &Path) -> App<'a> {
+    fn test_app<'a>(backend: &'a GitBackend, host: Arc<dyn AgentHost>, root: &Path) -> App<'a> {
         let options = DiffOptions {
             hunks_only: true,
             ..DiffOptions::default()
@@ -922,8 +913,8 @@ mod tests {
         let file_diffs = load_file_diffs(&options, backend);
         let state = AppState::for_repo(&options, file_diffs, backend, None);
         let review_roots = vec![root.to_path_buf()];
-        let agent = AgentLink::new(rex, root.to_path_buf());
-        let agent_worker = AgentWorker::spawn(Box::new(rex.clone()));
+        let agent = AgentLink::new(Arc::clone(&host), root.to_path_buf());
+        let agent_worker = AgentWorker::spawn(host);
         App {
             state,
             options,
@@ -953,10 +944,10 @@ mod tests {
     #[test]
     fn test_app_comment_queue_quit_prompt_and_global_search_jump_to_hidden_line() {
         let (dir, backend) = init_repo_with_diff();
-        let rex = StubRex {
+        let host: Arc<dyn AgentHost> = Arc::new(StubHost {
             root: dir.path().to_path_buf(),
-        };
-        let mut app = test_app(&backend, &rex, dir.path());
+        });
+        let mut app = test_app(&backend, host, dir.path());
         let screen = Rect::new(0, 0, 120, 30);
 
         // Open comment editor on focused hunk, type, and queue with Alt+Enter.
@@ -996,10 +987,10 @@ mod tests {
     #[test]
     fn test_app_agent_picker_refreshes_asynchronously_and_scroll_coalesces() {
         let (dir, backend) = init_repo_with_diff();
-        let rex = StubRex {
+        let host: Arc<dyn AgentHost> = Arc::new(StubHost {
             root: dir.path().to_path_buf(),
-        };
-        let mut app = test_app(&backend, &rex, dir.path());
+        });
+        let mut app = test_app(&backend, host, dir.path());
         let screen = Rect::new(0, 0, 120, 30);
 
         // `A` opens picker immediately and requests candidates off-thread.
@@ -1039,37 +1030,23 @@ mod tests {
     #[test]
     fn test_late_attach_respects_user_choice_and_picker_preserves_highlight() {
         let (dir, backend) = init_repo_with_diff();
-        let rex = StubRex {
+        let host = Arc::new(StubHost {
             root: dir.path().to_path_buf(),
-        };
-        let mut app = test_app(&backend, &rex, dir.path());
-
-        let pane = |block: &str| crate::review::agent::AgentPane {
-            session: "s1".to_string(),
-            session_label: "work".to_string(),
-            block: block.to_string(),
-            cwd: dir.path().to_path_buf(),
-            status: PaneStatus {
-                app: "pi".to_string(),
-                state: "idle".to_string(),
-                updated_at: "2026-11-25T10:00:00Z".to_string(),
-                owner_pid: Some(42),
-            },
-        };
+        });
+        let mut app = test_app(&backend, host.clone(), dir.path());
 
         // Explicit disconnect before initial attach finishes must not be clobbered.
-        app.agent.set_pane(None);
-        app.agent.apply_attached(vec![pane("b1"), pane("b2")]);
+        app.agent.set_target(None);
+        app.agent
+            .apply_attached(vec![host.target("b1"), host.target("b2")]);
         assert!(!app.agent.is_attached());
 
         // Highlighting b2 in the open agent picker survives a reordered candidate list.
         app.open_picker = Some(Picker::Agent);
-        app.active_modal = Some(agent_picker_with_selection(
-            &app.agent,
-            Some(Some(("s1", "b2"))),
-        ));
+        app.active_modal = Some(agent_picker_with_selection(&app.agent, Some(Some("b2"))));
         let highlighted = app.highlighted_agent_picker_target();
-        app.agent.apply_candidates(vec![pane("b2"), pane("b1")]);
+        app.agent
+            .apply_candidates(vec![host.target("b2"), host.target("b1")]);
         app.refresh_open_agent_picker(highlighted);
         match &app.active_modal {
             Some(Modal {

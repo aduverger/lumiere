@@ -18,7 +18,7 @@ An agent is discovered automatically when it reports Rex program status with a m
 - **Tested:** `pi`, `claude-code`, `codex` (0.163+), `antigravity`
 - **Recognized by name:** `opencode`, `hermes`, `grok`, `grok-build`
 
-Press <kbd>A</kbd> at any time to open the **Agents** picker, switch to another running agent pane, or choose `none` to detach. You can also target an explicit Rex block ID at startup with `--agent-block <BLOCK>`.
+Press <kbd>A</kbd> at any time to open the **Agents** picker, switch to another running agent pane, or choose `none` to detach. You can also target an explicit pane or terminal ID at startup with `--agent-target <TARGET>` (or the `--agent-block` alias for Rex).
 
 ## Safety guards before sending
 

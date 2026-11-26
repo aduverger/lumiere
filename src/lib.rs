@@ -38,7 +38,7 @@ pub fn run() -> Result<(), LumiereError> {
             origin,
             wrap,
             view,
-            agent_block,
+            agent_target,
         } => {
             let options = DiffOptions {
                 reference,
@@ -52,7 +52,7 @@ pub fn run() -> Result<(), LumiereError> {
                 origin,
                 wrap: wrap || config.wrap.unwrap_or(false),
                 hunks_only: view.or(config.view) != Some(ViewMode::Full),
-                agent_block,
+                agent_target,
             };
             match Workspace::discover(&cwd, vcs_override) {
                 Some(workspace) => ui::run_workspace_diff_ui(options, &workspace)?,

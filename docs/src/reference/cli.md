@@ -45,7 +45,7 @@ lumiere diff [OPTIONS] [REFERENCE]
 | `--origin <OWNER/REPO>` | GitHub `owner/repo` override when `--pr` is given as a number |
 | `--wrap` | Soft-wrap long diff lines instead of horizontal scrolling |
 | `--view <hunks\|full>` | Initial view mode (`hunks` default, `full` for whole files) |
-| `--agent-block <BLOCK>` | Explicit Rex block ID of the coding agent pane to attach to |
+| `--agent-target <TARGET>` | Explicit target pane or terminal ID of the coding agent to attach to (alias: `--agent-block`) |
 
 ---
 

@@ -59,7 +59,7 @@ Owns all review-workflow state independent of any terminal UI:
 - `Thread`, `Comment`, `Author`, and `AnnotationTarget` model line-range and file-level conversations plus anchor-text re-matching.
 - `ThreadStore` reads and writes versioned `threads.json` files safely across concurrent processes (`lumiere diff` and `lumiere thread reply`) using advisory file locks and atomic temp-file rename.
 - `review::cli` implements `lumiere thread {list, show, reply}` directly on top of `ThreadStore` and `Workspace`.
-- `review::agent` implements `Rex` pane discovery, safety checks, bracketed-paste submission, and the non-blocking background `AgentWorker` thread.
+- `review::agent` defines the host-agnostic `AgentHost` trait (`AgentTarget`, `AgentStatus`, `AgentState`), `AgentLink`, and non-blocking `AgentWorker`, with `review::agent::rex::RexHost` providing the Rex implementation.
 - `review::workspace` discovers sibling repositories under a workspace directory without importing any UI types.
 
 ### 4. `search` — In-file & global fuzzy search (`src/search/`)

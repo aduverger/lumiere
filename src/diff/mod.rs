@@ -31,7 +31,7 @@ pub struct DiffOptions {
     pub origin: Option<String>,
     pub wrap: bool,
     pub hunks_only: bool,
-    pub agent_block: Option<String>,
+    pub agent_target: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
