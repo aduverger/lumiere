@@ -90,7 +90,9 @@ Inside the viewer: press `[` / `]` to jump between hunks, `i` to comment, `Enter
 
 ## Comparison
 
-How Lumiere compares to other terminal diff viewers and review tools (see the [full comparison guide](docs/src/comparison.md) for trade-offs and when to pick each):
+How Lumiere compares to other terminal diff viewers and review tools on **features** and **measured performance** (see the [full comparison guide](docs/src/comparison.md) for methodology, complete metrics, and when to pick each tool):
+
+### Features
 
 | Capability | **Lumiere** | [hunk](https://github.com/modem-dev/hunk) | [plannotator-tui](https://github.com/plannotator/plannotator-tui) | [diffs-rs](https://github.com/plannotator/diffs-rs) | [lumen](https://github.com/jnsahaj/lumen) | [difftastic](https://github.com/Wilfred/difftastic) | [delta](https://github.com/dandavison/delta) | [diff-so-fancy](https://github.com/so-fancy/diff-so-fancy) | [diff](https://www.gnu.org/software/diffutils/) |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -112,6 +114,24 @@ How Lumiere compares to other terminal diff viewers and review tools (see the [f
 | Embeddable UI crate / component | ❌ | OpenTUI | ❌ | Ratatui | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 <sup>¹ `delta` is primarily a Git pager, with an optional interactive `--tui` mode via `gitu`. ² `hunk` also supports Sapling (`sl`). ³ Lumiere renders side-by-side and lets you focus one panel (`0` old, `-` new, `=` both).</sup>
+
+### Performance (`bench/bench.py`)
+
+Median of 5 runs on Linux (`aarch64`, 2 vCPU) using [`bench/bench.py`](bench/bench.py) against official release binaries (`lumiere 0.1.0`, `plannotator-tui 0.12.0` backed by `diffs-rs`, `hunk 0.25.0`, `lumen 2.32.0`):
+
+| Metric | **Lumiere** | **plannotator-tui** (`diffs-rs`) | **hunk** | **lumen** |
+| --- | ---: | ---: | ---: | ---: |
+| Start (`small`, 3 files) | **21.7 ms** | 51.2 ms | 481.5 ms | 577.9 ms |
+| Peak RAM (`small`) | **8.6 MB** | 16.5 MB | 211.9 MB | 41.1 MB |
+| Start (`many`, 300 files) | **65.9 ms** | 239.8 ms | 851.5 ms | 656.0 ms |
+| First key / next file (`many`) | 5.7 / 4.4 ms | **2.4 / 1.0 ms** | 85.9 / 14.2 ms | 5.5 / 5.8 ms |
+| Start (`large`, 360k-line / 5.3 MiB file) | 199.8 ms | **151.8 ms** | 516.4 ms | 755.5 ms |
+| Open 360k-line file / whole-file view | **210.8 / 185.4 ms** | *streamed / capped¹* | *skipped²* | 5,590 ms / *n/a* |
+| Peak RAM (`large`) | 128.7 MB | **16.7 MB¹** | 197.6 MB² | 1,109.5 MB |
+| Start (`ignored`, 8k `.venv` dirs, `--watch`) | **21.4 ms** | *no watch* | 515.1 ms | 1,004.5 ms |
+| Idle CPU (`--watch`, 4 s) | **0.0%** | *no watch* | 0.3% | 1.5%³ |
+
+<sup>¹ `plannotator-tui` streams only patch hunks (very low RAM) and caps whole-file view at 5 MiB. ² `hunk` prints "File too large to render automatically." on the 5.3 MiB file. ³ `lumen 2.32.0` reloads continuously on `Access` events in watch mode. Run `bench/bench.py` yourself to reproduce on your hardware — full 13-metric table in [docs/src/comparison.md](docs/src/comparison.md).</sup>
 
 ---
 

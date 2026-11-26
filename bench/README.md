@@ -51,5 +51,16 @@ screen` cannot be lower than that.
 
 ## Another tool
 
-Add an entry to `TOOLS` in `bench.py`: its command, its `--watch` argument, the bytes
-of its keys, and a text that is on screen only in its folded view.
+Built-in `--tool` presets exist for `lumiere`, `plannotator-tui`, `hunk`, and `lumen`, and
+`compare` accepts two or more saved labels:
+
+```bash
+python3 bench/bench.py run lumiere --tool lumiere --bin target/release/lumiere
+python3 bench/bench.py run plannotator --tool plannotator-tui
+python3 bench/bench.py run hunk --tool hunk
+python3 bench/bench.py run lumen --tool lumen
+python3 bench/bench.py compare lumiere plannotator hunk lumen
+```
+
+To benchmark another viewer, add an entry to `TOOLS` in `bench.py` with its command,
+optional `--watch` argument, key bytes, and fold-toggle marker.

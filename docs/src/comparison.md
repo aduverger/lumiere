@@ -27,6 +27,52 @@ Lumiere sits in a growing ecosystem of terminal diff viewers and review tools. T
 2. **`hunk`** supports Sapling (`sl`) in addition to Git and Jujutsu.
 3. **Lumiere** renders side-by-side by default and lets you focus one panel (`0` old, `-` new, `=` both).
 
+## Performance comparison
+
+End-to-end PTY benchmarks run with [`bench/bench.py`](https://github.com/aduverger/lumiere/blob/main/bench/bench.py) (140×40 terminal, median of 5 runs on a 2-vCPU Linux `aarch64` host, warm page cache) against official `linux-arm64` release binaries:
+
+- **Lumiere** `0.1.0` (`lumiere diff`)
+- **plannotator-tui** `0.12.0` (`plannotator-tui review`, powered by `diffs-rs`)
+- **hunk** `0.25.0` (`hunk diff`, standalone compiled binary)
+- **lumen** `2.32.0` (`lumen diff`)
+
+> [!NOTE]
+> `diffs-rs` (`diffs`) is a standalone crate/viewer for two-commit diffs and piped patches rather than working-tree reviews, so its engine is benchmarked via `plannotator-tui review` — the full review TUI built on `diffs-rs`. Non-interactive pagers (`difftastic`, `delta`, `diff-so-fancy`, `diff`) do not run an interactive TUI event loop and are omitted from this table.
+
+| Metric | **Lumiere** (`0.1.0`) | **plannotator-tui** (`0.12.0`, `diffs-rs`) | **hunk** (`0.25.0`) | **lumen** (`2.32.0`) |
+| --- | ---: | ---: | ---: | ---: |
+| Start (`small` repo, 3 files) | **21.7 ms** | 51.2 ms | 481.5 ms | 577.9 ms |
+| Peak memory (`small` repo) | **8.6 MB** | 16.5 MB | 211.9 MB | 41.1 MB |
+| Start (`small` repo, `--watch`) | **18.2 ms** | *no watch* | 511.7 ms | 579.6 ms |
+| File change to screen (`--watch`) | 553.9 ms³ | *no watch* | **278.1 ms** | 3.2 ms⁴ |
+| Idle CPU (`--watch`, over 4 s) | **0.0%** | *no watch* | 0.3% | 1.5%⁴ |
+| Start (`many` repo, 300 files) | **65.9 ms** | 239.8 ms | 851.5 ms | 656.0 ms |
+| First key answered (`many`) | 5.7 ms | **2.4 ms** | 85.9 ms | 5.5 ms |
+| Next file (`many`) | 4.4 ms | **1.0 ms** | 14.2 ms | 5.8 ms |
+| Start (`many` repo, `--watch`) | **73.8 ms** | *no watch* | 905.4 ms | 666.9 ms |
+| Start (`large` repo, 360k-line file) | 199.8 ms | **151.8 ms** | 516.4 ms | 755.5 ms |
+| Open the 360k-line file (`5.3 MiB`) | **210.8 ms** | *streamed¹* | *skipped²* | 5,590.0 ms |
+| Toggle whole-file view (`5.3 MiB`) | **185.4 ms** | *capped (5 MiB)¹* | *skipped²* | *n/a* |
+| Peak memory (`large` repo) | 128.7 MB | **16.7 MB¹** | 197.6 MB² | 1,109.5 MB |
+| Start (`large` repo, `--watch`) | **202.3 ms** | *no watch* | 658.7 ms | 749.6 ms |
+| Start (`ignored` repo, 8k `.venv` dirs) | **19.4 ms** | 49.4 ms | 467.3 ms | 575.7 ms |
+| Start (`ignored` repo, `--watch`) | **21.4 ms** | *no watch* | 515.1 ms | 1,004.5 ms |
+
+1. **`plannotator-tui`** streams only the unified patch hunks in a continuous view (so `z_large.py`'s first hunk is already on screen at startup with just `16.7 MB` RSS), and caps its whole-file view (`o`) at 5 MiB (`z_large.py is 5.3 MiB; the whole-file view shows files up to 5 MiB.`).
+2. **`hunk`** does not auto-render the 5.3 MiB file (`File too large to render automatically.`), so `open the large file` and `whole file view` are skipped.
+3. **Lumiere** intentionally gathers filesystem events for a 500 ms debounce window (`GATHERING_TIME`) before reloading so atomic editor save-and-rename sequences settle into one reload.
+4. **`lumen 2.32.0`** does not ignore `EventKind::Access` events in `--watch` mode, so each reload triggers another reload in a loop — explaining its `1.5%` idle CPU and erratic `3–306 ms` edit-to-screen timing.
+
+To reproduce on your own machine:
+
+```bash
+python3 bench/bench.py run lumiere --tool lumiere --bin target/release/lumiere
+python3 bench/bench.py run plannotator --tool plannotator-tui
+python3 bench/bench.py run hunk --tool hunk
+python3 bench/bench.py run lumen --tool lumen
+python3 bench/bench.py compare lumiere plannotator hunk lumen
+```
+
 ## How they differ & when to choose each
 
 ### Lumiere

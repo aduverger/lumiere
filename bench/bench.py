@@ -39,6 +39,27 @@ TOOLS = {
         # On screen in the folded view only.
         "folded_text": "unchanged lines",
     },
+    "lumen": {
+        "command": ["lumen", "diff"],
+        "watch": ["--watch"],
+        "keys": {"next_file": b"\x0a", "quit": b"q"},
+    },
+    "hunk": {
+        "command": ["hunk", "diff"],
+        "watch": ["--watch"],
+        "keys": {"next_file": b".", "toggle_view": b"z", "quit": b"q"},
+        # Hunk skips auto-rendering the 5.3 MB fixture ("File too large to render automatically.").
+        "large_file_rendered": False,
+        "unfolded_text": "Hide ",
+    },
+    "plannotator-tui": {
+        "command": ["plannotator-tui", "review"],
+        "watch": None,
+        "keys": {"next_file": b"n", "toggle_view": b"o", "quit": b"q"},
+        # Continuous stream already shows z_large.py's first hunk at start, and whole-file view caps at 5 MiB.
+        "large_file_rendered": False,
+        "folded_text": "Context not included in patch",
+    },
 }
 
 
@@ -267,15 +288,19 @@ def shows(text):
 def measure_once(tool, repositories, state_folder):
     """One pass over every metric: {metric name: value}."""
     keys = tool["keys"]
+    watch_modes = (False, True) if tool.get("watch") else (False,)
     values = {}
     first_file = {"small": "after_file0", "many": "after_file000", "large": "after_a_small", "ignored": "after_file0"}
     for name, marker in first_file.items():
-        for watch in (False, True):
+        for watch in watch_modes:
             command = tool["command"] + (tool["watch"] if watch else [])
             run = Session(command, repositories / name, state_folder)
             try:
                 label = f"start, {name} repository" + (", watch" if watch else "")
                 values[label] = run.seconds_until(shows(marker)) * 1000
+                if name == "small" and not watch:
+                    run.idle(SETTLING_TIME)
+                    values["peak memory, small repository"] = run.peak_memory_mb()
                 if name == "many" and not watch:
                     # Pressed at once: includes what the tool still does after its first screen.
                     pressed = run.press(keys["next_file"])
@@ -285,13 +310,17 @@ def measure_once(tool, repositories, state_folder):
                     values["next file"] = run.seconds_until(shows("after_file002"), pressed) * 1000
                 if name == "large" and not watch:
                     run.idle(SETTLING_TIME)
-                    pressed = run.press(keys["next_file"])
-                    values["open the large file"] = run.seconds_until(shows("after_z_large"), pressed) * 1000
-                    folded = tool["folded_text"]
-                    pressed = run.press(keys["toggle_view"])
-                    values["large file, whole file view"] = (
-                        run.seconds_until(lambda screen: folded not in screen, pressed) * 1000
-                    )
+                    if tool.get("large_file_rendered", True):
+                        pressed = run.press(keys["next_file"])
+                        values["open the large file"] = run.seconds_until(shows("after_z_large"), pressed) * 1000
+                        if "toggle_view" in keys:
+                            pressed = run.press(keys["toggle_view"])
+                            if "folded_text" in tool:
+                                folded = tool["folded_text"]
+                                unfolded = lambda screen: folded not in screen
+                            else:
+                                unfolded = shows(tool["unfolded_text"])
+                            values["large file, whole file view"] = run.seconds_until(unfolded, pressed) * 1000
                     values["peak memory, large file"] = run.peak_memory_mb()
                 if name == "small" and watch:
                     run.idle(1.5)
@@ -307,7 +336,6 @@ def measure_once(tool, repositories, state_folder):
                     used = run.cpu_seconds()
                     run.idle(4)
                     values["idle processor use, watch"] = (run.cpu_seconds() - used) / 4 * 100
-                    values["peak memory, small repository"] = run.peak_memory_mb()
             finally:
                 run.close(keys["quit"])
     return values
@@ -354,17 +382,33 @@ def run(arguments):
 
 
 def compare(arguments):
-    before, after = (
-        json.loads((RESULTS / f"{label}.json").read_text()) for label in (arguments.before, arguments.after)
-    )
-    print(f"{'metric':<34} {arguments.before:>12} {arguments.after:>12} {'change':>9}")
-    for metric, values in before["metrics"].items():
-        if metric not in after["metrics"]:
-            continue
-        old, new = statistics.median(values), statistics.median(after["metrics"][metric])
-        change = f"{(new - old) / old * 100:+.0f}%" if old else "n/a"
+    labels = arguments.labels
+    loaded = [json.loads((RESULTS / f"{label}.json").read_text()) for label in labels]
+    if len(labels) == 2:
+        before, after = loaded
+        print(f"{'metric':<34} {labels[0]:>12} {labels[1]:>12} {'change':>9}")
+        for metric, values in before["metrics"].items():
+            if metric not in after["metrics"]:
+                continue
+            old, new = statistics.median(values), statistics.median(after["metrics"][metric])
+            change = f"{(new - old) / old * 100:+.0f}%" if old else "n/a"
+            unit = unit_of(metric)
+            print(f"{metric:<34} {old:>9.0f} {unit:<2} {new:>9.0f} {unit:<2} {change:>9}")
+        return
+
+    all_metrics = list(dict.fromkeys(m for r in loaded for m in r["metrics"]))
+    header = f"{'metric':<34}" + "".join(f" {label:>15}" for label in labels)
+    print(header)
+    for metric in all_metrics:
         unit = unit_of(metric)
-        print(f"{metric:<34} {old:>9.0f} {unit:<2} {new:>9.0f} {unit:<2} {change:>9}")
+        row = f"{metric:<34}"
+        for r in loaded:
+            values = r["metrics"].get(metric)
+            if values is None:
+                row += f" {'—':>15}"
+            else:
+                row += f" {statistics.median(values):>12.1f} {unit:<2}"
+        print(row)
 
 
 def main():
@@ -376,9 +420,8 @@ def main():
     run_parser.add_argument("--bin", help="program to run instead of the one on PATH")
     run_parser.add_argument("--runs", type=int, default=5)
     run_parser.set_defaults(action=run)
-    compare_parser = commands.add_parser("compare", help="compare two saved results")
-    compare_parser.add_argument("before")
-    compare_parser.add_argument("after")
+    compare_parser = commands.add_parser("compare", help="compare two or more saved results")
+    compare_parser.add_argument("labels", nargs="+")
     compare_parser.set_defaults(action=compare)
     arguments = parser.parse_args()
     arguments.action(arguments)

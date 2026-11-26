@@ -25,6 +25,9 @@ python3 bench/bench.py compare baseline candidate
 
 ## Measured results
 
+> [!TIP]
+> For side-by-side benchmark numbers comparing **Lumiere** against **plannotator-tui (`diffs-rs`)**, **hunk**, and **lumen**, see [Comparison — Performance comparison](../comparison.md#performance-comparison).
+
 Median of 5 runs on a 2-vCPU Linux host comparing the pre-refactor release binary (`after`) against the refactored release binary (`refactored-final`):
 
 | Metric | Before | After | Change |
