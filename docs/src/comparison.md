@@ -21,7 +21,6 @@ Lumiere sits in a growing ecosystem of terminal diff viewers and review tools. T
 | Structural (AST) diffing | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Git pager / stdin patch mode | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | Markdown / plan review & gate | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Embeddable UI crate / component | ❌ | OpenTUI | ❌ | Ratatui | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 1. **`delta`** is primarily a Git pager, with an optional interactive `--tui` mode powered by `gitu`.
 2. **`hunk`** supports Sapling (`sl`) in addition to Git and Jujutsu.
