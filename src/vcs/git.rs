@@ -1,9 +1,9 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use git2::{Commit, Repository, StatusOptions, Tree};
+use git2::{Commit, Delta, DiffOptions as GitDiffOptions, Repository, Status, StatusOptions, Tree};
 
-use super::backend::{StackedCommitInfo, VcsBackend, VcsError};
+use super::backend::{FileStatus, StackedCommitInfo, VcsBackend, VcsError};
 
 const GIT_EMPTY_TREE_SHA: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -48,11 +48,11 @@ impl GitBackend {
             .map_err(|e| VcsError::Other(format!("failed to get tree for {reference}: {e}")))
     }
 
-    fn diff_tree_paths(
+    fn diff_tree_deltas(
         &self,
         from: Option<&Tree<'_>>,
         to: Option<&Tree<'_>>,
-    ) -> Result<Vec<String>, VcsError> {
+    ) -> Result<Vec<(String, FileStatus)>, VcsError> {
         let diff = self
             .repo
             .diff_tree_to_tree(from, to, None)
@@ -61,23 +61,91 @@ impl GitBackend {
         Ok(diff
             .deltas()
             .filter_map(|d| {
-                d.new_file()
-                    .path()
-                    .and_then(|p| p.to_str().map(String::from))
+                let path = d.new_file().path().and_then(|p| p.to_str())?.to_string();
+                let status = match d.status() {
+                    Delta::Added | Delta::Untracked => FileStatus::Added,
+                    Delta::Deleted => FileStatus::Deleted,
+                    _ => FileStatus::Modified,
+                };
+                Some((path, status))
             })
             .collect())
     }
 }
 
+pub fn compute_git_diff_stats(
+    repo_root: &Path,
+    old_ref: &str,
+    new_ref: Option<&str>,
+    file_filter: Option<&[String]>,
+) -> Option<(usize, usize)> {
+    let repo = Repository::discover(repo_root).ok()?;
+    let old_tree = if old_ref.is_empty() || old_ref == GIT_EMPTY_TREE_SHA {
+        None
+    } else {
+        repo.revparse_single(old_ref.trim())
+            .ok()
+            .and_then(|obj| obj.peel_to_commit().ok())
+            .and_then(|commit| commit.tree().ok())
+    };
+
+    let mut opts = GitDiffOptions::new();
+    opts.ignore_submodules(true);
+    if let Some(filter) = file_filter {
+        if filter.is_empty() {
+            return Some((0, 0));
+        }
+        opts.disable_pathspec_match(true);
+        for path in filter {
+            opts.pathspec(path);
+        }
+    }
+
+    let diff = match new_ref {
+        Some(to) => {
+            let new_tree = repo
+                .revparse_single(to.trim())
+                .ok()?
+                .peel_to_commit()
+                .ok()?
+                .tree()
+                .ok()?;
+            repo.diff_tree_to_tree(old_tree.as_ref(), Some(&new_tree), Some(&mut opts))
+                .ok()?
+        }
+        None => {
+            opts.include_untracked(true)
+                .show_untracked_content(true)
+                .recurse_untracked_dirs(true);
+            repo.diff_tree_to_workdir_with_index(old_tree.as_ref(), Some(&mut opts))
+                .ok()?
+        }
+    };
+
+    let stats = diff.stats().ok()?;
+    Some((stats.insertions(), stats.deletions()))
+}
+
 impl VcsBackend for GitBackend {
     fn get_changed_files(&self, reference: &str) -> Result<Vec<String>, VcsError> {
+        Ok(self
+            .get_changed_files_with_status(reference)?
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect())
+    }
+
+    fn get_changed_files_with_status(
+        &self,
+        reference: &str,
+    ) -> Result<Vec<(String, FileStatus)>, VcsError> {
         let reference = reference.trim();
 
         if let Some((from, to)) = reference
             .split_once("...")
             .or_else(|| reference.split_once(".."))
         {
-            return self.get_range_changed_files(from, to);
+            return self.get_range_changed_files_with_status(from, to);
         }
 
         let commit = self.resolve_commit(reference)?;
@@ -90,7 +158,7 @@ impl VcsBackend for GitBackend {
             None
         };
 
-        self.diff_tree_paths(parent_tree.as_ref(), Some(&tree))
+        self.diff_tree_deltas(parent_tree.as_ref(), Some(&tree))
     }
 
     fn get_file_content_at_ref(&self, reference: &str, path: &Path) -> Result<String, VcsError> {
@@ -137,6 +205,16 @@ impl VcsBackend for GitBackend {
     }
 
     fn get_working_tree_changed_files(&self) -> Result<Vec<String>, VcsError> {
+        Ok(self
+            .get_working_tree_changed_files_with_status()?
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect())
+    }
+
+    fn get_working_tree_changed_files_with_status(
+        &self,
+    ) -> Result<Vec<(String, FileStatus)>, VcsError> {
         let mut opts = StatusOptions::new();
         opts.include_untracked(true)
             .recurse_untracked_dirs(true)
@@ -148,10 +226,21 @@ impl VcsBackend for GitBackend {
             .statuses(Some(&mut opts))
             .map_err(|e| VcsError::Other(format!("failed to get status: {e}")))?;
 
-        let files: HashSet<String> = statuses
-            .iter()
-            .filter_map(|s| s.path().map(String::from))
-            .collect();
+        let mut files: HashMap<String, FileStatus> = HashMap::new();
+        for entry in statuses.iter() {
+            let Some(path) = entry.path() else {
+                continue;
+            };
+            let st = entry.status();
+            let status = if st.intersects(Status::WT_NEW | Status::INDEX_NEW) {
+                FileStatus::Added
+            } else if st.intersects(Status::WT_DELETED | Status::INDEX_DELETED) {
+                FileStatus::Deleted
+            } else {
+                FileStatus::Modified
+            };
+            files.entry(path.to_string()).or_insert(status);
+        }
 
         Ok(files.into_iter().collect())
     }
@@ -173,9 +262,21 @@ impl VcsBackend for GitBackend {
     }
 
     fn get_range_changed_files(&self, from: &str, to: &str) -> Result<Vec<String>, VcsError> {
+        Ok(self
+            .get_range_changed_files_with_status(from, to)?
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect())
+    }
+
+    fn get_range_changed_files_with_status(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<(String, FileStatus)>, VcsError> {
         let from_tree = self.resolve_tree(from)?;
         let to_tree = self.resolve_tree(to)?;
-        self.diff_tree_paths(Some(&from_tree), Some(&to_tree))
+        self.diff_tree_deltas(Some(&from_tree), Some(&to_tree))
     }
 
     fn get_parent_ref_or_empty(&self, reference: &str) -> Result<String, VcsError> {

@@ -9,9 +9,9 @@ mod reference;
 #[cfg(test)]
 pub mod test_utils;
 
-pub use backend::{StackedCommitInfo, VcsBackend, VcsError};
+pub use backend::{FileStatus, StackedCommitInfo, VcsBackend, VcsError};
 pub use detection::{detect_vcs_type, vcs_type_at, VcsType};
-pub use git::GitBackend;
+pub use git::{compute_git_diff_stats, GitBackend};
 #[cfg(feature = "jj")]
 pub use jj::JjBackend;
 pub use reference::{CommitReference, ReferenceParseError};

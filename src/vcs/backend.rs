@@ -1,6 +1,33 @@
 use std::path::Path;
 use thiserror::Error;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileStatus {
+    Added,
+    Modified,
+    Deleted,
+}
+
+impl FileStatus {
+    pub fn symbol(self) -> &'static str {
+        match self {
+            Self::Added => "A",
+            Self::Modified => "M",
+            Self::Deleted => "D",
+        }
+    }
+
+    pub fn from_contents(old: &str, new: &str) -> Self {
+        if old.is_empty() && !new.is_empty() {
+            Self::Added
+        } else if !old.is_empty() && new.is_empty() {
+            Self::Deleted
+        } else {
+            Self::Modified
+        }
+    }
+}
+
 /// Error types for VCS operations.
 #[derive(Error, Debug)]
 #[allow(dead_code)] // Some variants used only by jj backend
@@ -48,6 +75,18 @@ pub trait VcsBackend {
     /// Get list of changed files for a commit or range.
     fn get_changed_files(&self, reference: &str) -> Result<Vec<String>, VcsError>;
 
+    /// Get changed files with their status without reading file contents.
+    fn get_changed_files_with_status(
+        &self,
+        reference: &str,
+    ) -> Result<Vec<(String, FileStatus)>, VcsError> {
+        Ok(self
+            .get_changed_files(reference)?
+            .into_iter()
+            .map(|path| (path, FileStatus::Modified))
+            .collect())
+    }
+
     /// Get file content at a specific ref.
     fn get_file_content_at_ref(&self, reference: &str, path: &Path) -> Result<String, VcsError>;
 
@@ -72,6 +111,16 @@ pub trait VcsBackend {
     /// For jj: diffs @ tree vs @- tree.
     fn get_working_tree_changed_files(&self) -> Result<Vec<String>, VcsError>;
 
+    fn get_working_tree_changed_files_with_status(
+        &self,
+    ) -> Result<Vec<(String, FileStatus)>, VcsError> {
+        Ok(self
+            .get_working_tree_changed_files()?
+            .into_iter()
+            .map(|path| (path, FileStatus::Modified))
+            .collect())
+    }
+
     /// Get the merge base (common ancestor) of two refs.
     /// Used for triple-dot diffs (A...B).
     /// For git: runs 'git merge-base <ref1> <ref2>'.
@@ -87,6 +136,18 @@ pub trait VcsBackend {
     /// For git: runs 'git diff --name-only <from> <to>'.
     /// For jj: diffs the trees of the two commits.
     fn get_range_changed_files(&self, from: &str, to: &str) -> Result<Vec<String>, VcsError>;
+
+    fn get_range_changed_files_with_status(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<(String, FileStatus)>, VcsError> {
+        Ok(self
+            .get_range_changed_files(from, to)?
+            .into_iter()
+            .map(|path| (path, FileStatus::Modified))
+            .collect())
+    }
 
     /// Get the parent ref for a commit, or the empty tree SHA for root commits.
     /// This handles the edge case where a commit has no parent (first commit).
