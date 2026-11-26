@@ -125,23 +125,39 @@ pub fn setup_watcher(root: &Path) -> Option<(WatchHandle, Receiver<WatchEvent>)>
 mod tests {
     use super::*;
 
+    fn wait_for_path(events: &Receiver<WatchEvent>, expected: &str) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+            let Ok(event) = events.recv_timeout(remaining) else {
+                break;
+            };
+            if event.changed_files.contains(expected) {
+                return;
+            }
+        }
+        panic!("timed out waiting for watch event containing {expected}");
+    }
+
     #[test]
     fn test_writing_a_file_is_reported_and_reading_it_is_not() {
         let root = tempfile::tempdir().expect("temp dir");
         let root_path = root.path().canonicalize().expect("canonical temp dir");
         fs::create_dir(root_path.join("src")).expect("create src");
         let file = root_path.join("src").join("a.rs");
-        fs::write(&file, "one\n").expect("write the file");
         let (_handle, events) = setup_watcher(&root_path).expect("watcher");
+
+        // Write after starting the watcher and wait for that batch so macOS
+        // FSEvents flushes pre-watch temp-dir setup events before the read check.
+        fs::write(&file, "one\n").expect("write the file");
+        wait_for_path(&events, "src/a.rs");
 
         fs::read_to_string(&file).expect("read the file");
         fs::read_dir(root_path.join("src"))
             .expect("list the directory")
             .count();
-        assert!(
-            events.recv_timeout(GATHERING_TIME * 3).is_err(),
-            "a read was reported"
-        );
+        if let Ok(event) = events.recv_timeout(GATHERING_TIME * 3) {
+            panic!("a read was reported: {:?}", event.changed_files);
+        }
 
         fs::write(&file, "two\n").expect("change the file");
         let event = events
@@ -190,7 +206,7 @@ mod tests {
         let (_handle, events) = setup_watcher(&root_path).expect("watcher");
 
         fs::create_dir_all(root_path.join("src/new/deeper")).expect("create folders");
-        assert!(changed_files(&events).is_some());
+        wait_for_path(&events, "src/new");
 
         fs::write(root_path.join("src/new/deeper/b.rs"), "one\n").expect("write the file");
         assert_eq!(
