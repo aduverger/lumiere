@@ -91,6 +91,190 @@ pub fn compute_line_stats(side_by_side: &[DiffLine]) -> LineStats {
     LineStats { added, removed }
 }
 
+const MAX_PAIRING_BLOCK: usize = 128;
+const MAX_PAIRING_OFFSET: usize = 16;
+const MIN_PAIR_SIMILARITY: f64 = 0.40;
+
+fn line_similarity(a: &str, b: &str) -> f64 {
+    let a = a.trim();
+    let b = b.trim();
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+    if a == b {
+        return 1.0;
+    }
+
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let min_chars = a_chars.len().min(b_chars.len());
+    let max_chars = a_chars.len().max(b_chars.len());
+    let prefix = a_chars
+        .iter()
+        .zip(&b_chars)
+        .take_while(|(ca, cb)| ca == cb)
+        .count();
+    let suffix = a_chars[prefix..]
+        .iter()
+        .rev()
+        .zip(b_chars[prefix..].iter().rev())
+        .take(min_chars - prefix)
+        .take_while(|(ca, cb)| ca == cb)
+        .count();
+    let affix_ratio = (prefix + suffix) as f64 / max_chars as f64;
+
+    let is_delim = |c: char| !c.is_alphanumeric() && c != '_';
+    let a_tokens: Vec<&str> = a.split(is_delim).filter(|t| !t.is_empty()).collect();
+    let b_tokens: Vec<&str> = b.split(is_delim).filter(|t| !t.is_empty()).collect();
+    let token_dice = if a_tokens.is_empty() || b_tokens.is_empty() {
+        0.0
+    } else {
+        let mut used = vec![false; b_tokens.len()];
+        let mut shared = 0usize;
+        for tok in &a_tokens {
+            if let Some(pos) = b_tokens
+                .iter()
+                .enumerate()
+                .position(|(idx, candidate)| !used[idx] && candidate == tok)
+            {
+                used[pos] = true;
+                shared += 1;
+            }
+        }
+        (2 * shared) as f64 / (a_tokens.len() + b_tokens.len()) as f64
+    };
+
+    affix_ratio.max(token_dice)
+}
+
+/// Finds an order-preserving pairing of similar lines across a replace block
+/// within `MAX_PAIRING_OFFSET` lines of each other.
+fn find_best_line_pairs(
+    deletions: &[(usize, String)],
+    insertions: &[(usize, String)],
+) -> Vec<(usize, usize)> {
+    let m = deletions.len();
+    let n = insertions.len();
+    if m == 0 || n == 0 || m > MAX_PAIRING_BLOCK || n > MAX_PAIRING_BLOCK {
+        return Vec::new();
+    }
+    if m == 1 && n == 1 {
+        return vec![(0, 0)];
+    }
+
+    let stride = n + 1;
+    let mut dp = vec![0u32; (m + 1) * stride];
+    let mut matched = vec![false; m * n];
+
+    for di in 0..m {
+        let j_start = di.saturating_sub(MAX_PAIRING_OFFSET);
+        let j_end = (di + MAX_PAIRING_OFFSET + 1).min(n);
+        for ii in 0..n {
+            let skip_d = dp[di * stride + (ii + 1)];
+            let skip_i = dp[(di + 1) * stride + ii];
+            let mut best = skip_d.max(skip_i);
+
+            if (j_start..j_end).contains(&ii) {
+                let score = line_similarity(&deletions[di].1, &insertions[ii].1);
+                if score >= MIN_PAIR_SIMILARITY {
+                    let bonus = ((score * 1000.0) as u32)
+                        .saturating_sub(di.abs_diff(ii) as u32)
+                        .max(1);
+                    let candidate = dp[di * stride + ii] + bonus;
+                    if candidate > best {
+                        best = candidate;
+                        matched[di * n + ii] = true;
+                    }
+                }
+            }
+            dp[(di + 1) * stride + (ii + 1)] = best;
+        }
+    }
+
+    let mut pairs = Vec::new();
+    let mut di = m;
+    let mut ii = n;
+    while di > 0 && ii > 0 {
+        if matched[(di - 1) * n + (ii - 1)]
+            && dp[di * stride + ii] > dp[(di - 1) * stride + ii].max(dp[di * stride + (ii - 1)])
+        {
+            pairs.push((di - 1, ii - 1));
+            di -= 1;
+            ii -= 1;
+        } else if dp[(di - 1) * stride + ii] >= dp[di * stride + (ii - 1)] {
+            di -= 1;
+        } else {
+            ii -= 1;
+        }
+    }
+    pairs.reverse();
+    pairs
+}
+
+fn push_paired_row(
+    lines: &mut Vec<DiffLine>,
+    old_line: Option<(usize, String)>,
+    new_line: Option<(usize, String)>,
+) {
+    let change_type = match (&old_line, &new_line) {
+        (Some(_), Some(_)) => ChangeType::Modified,
+        (Some(_), None) => ChangeType::Delete,
+        (None, Some(_)) => ChangeType::Insert,
+        (None, None) => return,
+    };
+
+    let (old_segments, new_segments) = if matches!(change_type, ChangeType::Modified) {
+        let old_text = old_line.as_ref().map(|(_, t)| t.as_str()).unwrap_or("");
+        let new_text = new_line.as_ref().map(|(_, t)| t.as_str()).unwrap_or("");
+        match compute_word_diff(old_text, new_text) {
+            Some((old_segs, new_segs)) => (Some(old_segs), Some(new_segs)),
+            None => (None, None),
+        }
+    } else {
+        (None, None)
+    };
+
+    lines.push(DiffLine {
+        old_line,
+        new_line,
+        change_type,
+        old_segments,
+        new_segments,
+        hidden_lines: 0,
+    });
+}
+
+fn emit_replace_block(
+    lines: &mut Vec<DiffLine>,
+    deletions: &[(usize, String)],
+    insertions: &[(usize, String)],
+) {
+    let pairs = find_best_line_pairs(deletions, insertions);
+    let mut prev_d = 0usize;
+    let mut prev_i = 0usize;
+
+    for (d_idx, i_idx) in pairs {
+        let gap_d = &deletions[prev_d..d_idx];
+        let gap_i = &insertions[prev_i..i_idx];
+        for j in 0..gap_d.len().max(gap_i.len()) {
+            push_paired_row(lines, gap_d.get(j).cloned(), gap_i.get(j).cloned());
+        }
+        push_paired_row(
+            lines,
+            Some(deletions[d_idx].clone()),
+            Some(insertions[i_idx].clone()),
+        );
+        prev_d = d_idx + 1;
+        prev_i = i_idx + 1;
+    }
+
+    let tail_d = &deletions[prev_d..];
+    let tail_i = &insertions[prev_i..];
+    for j in 0..tail_d.len().max(tail_i.len()) {
+        push_paired_row(lines, tail_d.get(j).cloned(), tail_i.get(j).cloned());
+    }
+}
+
 /// Computes a side-by-side diff pairing consecutive deletions with following insertions.
 pub fn compute_side_by_side(old: &str, new: &str, tab_width: usize) -> Vec<DiffLine> {
     let diff = TextDiff::from_lines(old, new);
@@ -138,39 +322,7 @@ pub fn compute_side_by_side(old: &str, new: &str, tab_width: usize) -> Vec<DiffL
                     i += 1;
                 }
 
-                let max_len = deletions.len().max(insertions.len());
-                for j in 0..max_len {
-                    let old_line = deletions.get(j).cloned();
-                    let new_line = insertions.get(j).cloned();
-
-                    let change_type = match (&old_line, &new_line) {
-                        (Some(_), Some(_)) => ChangeType::Modified,
-                        (Some(_), None) => ChangeType::Delete,
-                        (None, Some(_)) => ChangeType::Insert,
-                        (None, None) => unreachable!(),
-                    };
-
-                    let (old_segments, new_segments) =
-                        if matches!(change_type, ChangeType::Modified) {
-                            let old_text = old_line.as_ref().map(|(_, t)| t.as_str()).unwrap_or("");
-                            let new_text = new_line.as_ref().map(|(_, t)| t.as_str()).unwrap_or("");
-                            match compute_word_diff(old_text, new_text) {
-                                Some((old_segs, new_segs)) => (Some(old_segs), Some(new_segs)),
-                                None => (None, None),
-                            }
-                        } else {
-                            (None, None)
-                        };
-
-                    lines.push(DiffLine {
-                        old_line,
-                        new_line,
-                        change_type,
-                        old_segments,
-                        new_segments,
-                        hidden_lines: 0,
-                    });
-                }
+                emit_replace_block(&mut lines, &deletions, &insertions);
             }
             ChangeTag::Insert => {
                 lines.push(DiffLine {
@@ -368,5 +520,50 @@ mod tests {
 
         assert_eq!(find_hunk_starts(&hunks_only).len(), hunks_in_full_file);
         assert_eq!(hunks_in_full_file, 3);
+    }
+
+    #[test]
+    fn test_bounded_similarity_pairing_aligns_edited_lines_past_inserted_or_deleted_lines() {
+        let old = "let tax = subtotal * 0.2;\nlet total = subtotal + tax;\n";
+        let new = "let discount = coupon.amount();\nlet net = subtotal - discount;\nlet tax = net * 0.2;\nlet total = net + tax;\n";
+        let rows = compute_side_by_side(old, new, 4);
+
+        assert_eq!(rows.len(), 4);
+        assert_eq!(rows[0].change_type, ChangeType::Insert);
+        assert_eq!(rows[1].change_type, ChangeType::Insert);
+        assert_eq!(rows[2].change_type, ChangeType::Modified);
+        assert_eq!(
+            rows[2].old_line.as_ref().map(|(_, s)| s.as_str()),
+            Some("let tax = subtotal * 0.2;")
+        );
+        assert_eq!(
+            rows[2].new_line.as_ref().map(|(_, s)| s.as_str()),
+            Some("let tax = net * 0.2;")
+        );
+        assert!(rows[2].old_segments.is_some());
+        assert_eq!(rows[3].change_type, ChangeType::Modified);
+        assert!(rows[3].old_segments.is_some());
+        assert_eq!(
+            compute_line_stats(&rows),
+            LineStats {
+                added: 4,
+                removed: 2,
+            }
+        );
+
+        let middle_old = "compute(alpha, 1);\nfinish(beta, 1);\n";
+        let middle_new = "compute(alpha, 2);\nlog_step();\nfinish(beta, 2);\n";
+        let middle_rows = compute_side_by_side(middle_old, middle_new, 4);
+        assert_eq!(middle_rows.len(), 3);
+        assert_eq!(middle_rows[0].change_type, ChangeType::Modified);
+        assert_eq!(middle_rows[1].change_type, ChangeType::Insert);
+        assert_eq!(middle_rows[2].change_type, ChangeType::Modified);
+        assert_eq!(
+            compute_line_stats(&middle_rows),
+            LineStats {
+                added: 3,
+                removed: 2,
+            }
+        );
     }
 }
