@@ -329,27 +329,29 @@ fn render_single_panel(
     let bg = t.ui.bg;
     let side_by_side = state.side_by_side_ref();
 
-    let (title, panel_focus, match_panel, source, tree_map, highlighter, indicator_fg) = match kind
-    {
-        SinglePanelKind::Added => (
-            " [2] New File ",
-            DiffPanelFocus::New,
-            MatchPanel::New,
-            &diff.new_content,
-            &state.cached_trees.new_file_trees,
-            input.new_highlighter,
-            t.diff.added_gutter_fg,
-        ),
-        SinglePanelKind::Deleted => (
-            " [2] Deleted File ",
-            DiffPanelFocus::Old,
-            MatchPanel::Old,
-            &diff.old_content,
-            &state.cached_trees.old_file_trees,
-            input.old_highlighter,
-            t.diff.deleted_gutter_fg,
-        ),
-    };
+    let (title, panel_focus, match_panel, source, tree_map, highlighter, gutter_bg_base, gutter_fg) =
+        match kind {
+            SinglePanelKind::Added => (
+                " [2] New File ",
+                DiffPanelFocus::New,
+                MatchPanel::New,
+                &diff.new_content,
+                &state.cached_trees.new_file_trees,
+                input.new_highlighter,
+                t.diff.added_gutter_bg,
+                t.diff.added_gutter_fg,
+            ),
+            SinglePanelKind::Deleted => (
+                " [2] Deleted File ",
+                DiffPanelFocus::Old,
+                MatchPanel::Old,
+                &diff.old_content,
+                &state.cached_trees.old_file_trees,
+                input.old_highlighter,
+                t.diff.deleted_gutter_bg,
+                t.diff.deleted_gutter_fg,
+            ),
+        };
 
     let visible_height = main_area.height.saturating_sub(2) as usize;
     let scroll_usize = state.scroll as usize;
@@ -409,7 +411,6 @@ fn render_single_panel(
 
     let ann_index_ranges = compute_target_index_ranges(&line_slots, side_by_side);
     let annotation_indicator_style = Style::default().fg(t.ui.highlight);
-    let indicator_style = Style::default().fg(indicator_fg);
     let row_target_width = (main_area.width as usize).saturating_sub(2) + h_scroll as usize;
 
     for (i, diff_line) in side_by_side
@@ -429,22 +430,22 @@ fn render_single_panel(
         };
         if let Some((num, text)) = side_line {
             let gutter_bg = if line_selected {
-                blend_with_selection(bg)
+                blend_with_selection(gutter_bg_base)
             } else {
-                bg
+                gutter_bg_base
             };
             let prefix_spans = vec![
                 make_indicator_span(
-                    !in_annotation,
+                    false,
                     in_annotation,
                     line_selected,
                     bg,
-                    indicator_style,
+                    Style::default(),
                     annotation_indicator_style,
                 ),
                 Span::styled(
                     format!("{num:4} "),
-                    Style::default().fg(t.ui.line_number).bg(gutter_bg),
+                    Style::default().fg(gutter_fg).bg(gutter_bg),
                 ),
             ];
             let matches = state
@@ -489,12 +490,15 @@ fn render_single_panel(
         }
     }
 
-    let para = Paragraph::new(lines).scroll((0, h_scroll)).block(
-        Block::default()
-            .title(Line::styled(title, title_style))
-            .borders(Borders::ALL)
-            .border_style(border_style),
-    );
+    let para = Paragraph::new(lines)
+        .style(Style::default().bg(bg))
+        .scroll((0, h_scroll))
+        .block(
+            Block::default()
+                .title(Line::styled(title, title_style))
+                .borders(Borders::ALL)
+                .border_style(border_style),
+        );
     frame.render_widget(para, main_area);
 
     let mut annotation_rects = Vec::new();
@@ -1260,7 +1264,7 @@ mod tests {
     }
 
     #[test]
-    fn test_render_single_panel_uses_left_bar_and_neutral_background() {
+    fn test_render_single_panel_uses_colored_gutter_and_neutral_background() {
         let render_buffer = |state: &mut AppState| {
             state.show_sidebar = false;
             state.ensure_cache();
@@ -1311,15 +1315,12 @@ mod tests {
             "note".into(),
         );
         let buf = render_buffer(&mut added);
-        let bar = buf.cell((1, 1)).unwrap();
-        assert_eq!(bar.symbol(), "▎");
-        assert_eq!(bar.fg, t.diff.added_gutter_fg);
+        assert_eq!(buf.cell((1, 1)).unwrap().symbol(), " ");
         let line_num = buf.cell((5, 1)).unwrap();
         assert_eq!(line_num.symbol(), "1");
-        assert_eq!(line_num.fg, t.ui.line_number);
-        assert_eq!(line_num.bg, t.ui.bg);
-        let code = buf.cell((7, 1)).unwrap();
-        assert_eq!(code.bg, t.ui.bg);
+        assert_eq!(line_num.fg, t.diff.added_gutter_fg);
+        assert_eq!(line_num.bg, t.diff.added_gutter_bg);
+        assert_eq!(buf.cell((7, 1)).unwrap().bg, t.ui.bg);
         let thread_bar = buf.cell((1, 2)).unwrap();
         assert_eq!(thread_bar.symbol(), "▍");
         assert_eq!(thread_bar.fg, t.ui.highlight);
@@ -1333,10 +1334,11 @@ mod tests {
             None,
         );
         let del_buf = render_buffer(&mut deleted);
-        let del_bar = del_buf.cell((1, 1)).unwrap();
-        assert_eq!(del_bar.symbol(), "▎");
-        assert_eq!(del_bar.fg, t.diff.deleted_gutter_fg);
-        assert_eq!(del_buf.cell((5, 1)).unwrap().bg, t.ui.bg);
+        assert_eq!(del_buf.cell((1, 1)).unwrap().symbol(), " ");
+        let del_num = del_buf.cell((5, 1)).unwrap();
+        assert_eq!(del_num.symbol(), "1");
+        assert_eq!(del_num.fg, t.diff.deleted_gutter_fg);
+        assert_eq!(del_num.bg, t.diff.deleted_gutter_bg);
         assert_eq!(del_buf.cell((7, 1)).unwrap().bg, t.ui.bg);
     }
 }
