@@ -31,8 +31,8 @@
 - **Built around review threads, not one-way notes.** Start a thread on a mouse selection, a focused hunk, or an entire file. Send comments immediately (<kbd>Enter</kbd>) or queue a batch (<kbd>Alt+Enter</kbd> / <kbd>Ctrl+S</kbd>) and dispatch them together (<kbd>s</kbd>). Your agent replies via `lumiere thread reply`, and its response appears live inside the open TUI.
 - **Hunks-only by default, full file one key away.** Just like GitHub PR reviews, Lumiere opens focused on changes with three context lines around every hunk. Lines anchored by review threads remain visible even when far from a diff hunk.
 - **Multi-repository workspaces.** Run `lumiere diff` in a folder containing several repositories (such as `api/` and `web/`). Switch between them with <kbd>R</kbd> while preserving each repository's threads, viewed markers, and scroll position, and send queued feedback across all repositories in one message.
-- **Git and Jujutsu native.** Backed directly by `libgit2` (vendored) and `jj-lib` — no shelling out to `git diff` on every keystroke.
-- **Designed for speed and zero idle cost.** Lazy per-language Tree-sitter grammar compilation, cached diff metrics, non-blocking background Rex discovery, and event-driven redraws keep startup fast and idle watch CPU at ~0%.
+- **Git and Jujutsu native.** Reads Git and Jujutsu repositories directly via `libgit2` and `jj-lib`.
+- **Fast startup, zero idle overhead.** Opens in ~25 ms even on large repositories and uses 0% CPU while idle in watch mode.
 
 ## Where to go next
 

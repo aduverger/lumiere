@@ -55,7 +55,7 @@ Lumiere is a fast, side-by-side terminal diff viewer written in Rust for reviewi
 - **Hunks-only by default, full file one key away** — Opens focused on changes with three context lines around each hunk (like GitHub PR reviews); press `z` to switch to full files while keeping your hunk in place.
 - **Multi-repository workspaces** — Run `lumiere diff` in a parent folder containing multiple repositories (`api/`, `web/`, …), switch with `R`, and dispatch queued feedback across every repository in one message.
 - **GitHub PRs & stacked commits** — Review PRs via `--pr` / `--detect-pr` with GitHub viewed-file sync, or step commit-by-commit through a range with `--stacked`.
-- **Git & Jujutsu native, built for speed** — Uses vendored `libgit2` and `jj-lib` directly, lazy per-file blob loading, lazy per-language Tree-sitter highlighting, cached diff metrics, and event-driven redraws (~25 ms startup even on 300-file and 360k-line repos, 0% idle watch CPU).
+- **Git & Jujutsu native, built for speed** — Native Git and Jujutsu backends with Tree-sitter syntax highlighting, ~25 ms startup even on large repositories, and 0% idle watch CPU.
 - **`pi` coding agent integration** — Includes a [`/lumiere`](pi-extension/) extension for [pi](https://github.com/earendil-works/pi).
 
 ## Install
@@ -94,7 +94,7 @@ Inside the viewer: press `[` / `]` to jump between hunks, `i` to comment, `Enter
 
 ## Comparison
 
-How Lumiere compares to other interactive terminal code-review TUIs on **features** and **measured performance** (see the [full comparison guide](docs/src/comparison.md) for `diffs-rs`, `difftastic`, `delta`, `diff-so-fancy`, GNU `diff`, methodology, and complete metrics):
+How Lumiere compares to other interactive terminal code-review TUIs on **features** and **measured performance** (see the [full comparison guide](docs/src/comparison.md) for `difftastic`, `delta`, `diff-so-fancy`, GNU `diff`, methodology, and complete metrics):
 
 ### Features
 
@@ -115,7 +115,7 @@ How Lumiere compares to other interactive terminal code-review TUIs on **feature
 
 ### Performance (`bench/bench.py`)
 
-Median of 5 runs on Linux (`aarch64`, 2 vCPU) using [`bench/bench.py`](bench/bench.py) against official release binaries (`lumiere 0.1.0`, `hunk 0.25.0`, `plannotator-tui 0.12.0` backed by `diffs-rs`, `lumen 2.32.0`):
+Median of 5 runs on Linux (`aarch64`, 2 vCPU) using [`bench/bench.py`](bench/bench.py) against official release binaries (`lumiere 0.1.0`, `hunk 0.25.0`, `plannotator-tui 0.12.0`, `lumen 2.32.0`):
 
 <p align="center">
   <picture>
@@ -159,7 +159,7 @@ Full guides and architecture notes live at **[lumiere.computer](https://lumiere.
 | `--agent-target TARGET` | Target pane/terminal ID of the coding agent (alias: `--agent-block`) |
 | `--vcs git\|jj` | Force the VCS backend (passed before `diff`) |
 
-`lumiere diff` works from any subdirectory of a repository. On Linux, `--watch` skips gitignored directories such as `node_modules` and `.venv`. Files over 1 MB are highlighted line-by-line (skipping whole-file Tree-sitter parsing and sticky enclosing-scope headers) to stay fast.
+`lumiere diff` works from any subdirectory of a repository. On Linux, `--watch` skips gitignored directories such as `node_modules` and `.venv`. Files over 1 MB use lightweight line-by-line highlighting to stay responsive.
 
 <p align="center">
   <img src="assets/screenshots/diff.png" width="760" alt="Full-file side-by-side diff view with file tree sidebar" />
@@ -188,7 +188,7 @@ Select lines with the mouse, or focus a hunk with `[` / `]`; with neither, `i` o
   <sub>Press <code>A</code> to attach to any coding agent running in the repository or workspace.</sub>
 </p>
 
-- **Agent discovery:** Lumiere connects to coding agents through a host-agnostic `AgentHost` layer (currently backed by [Rex](https://rex.dev) panes reporting [Program Status](https://www.superlogical.com/rex/docs/build/program-status), such as pi, Claude Code, Codex 0.163+, and Antigravity). It auto-attaches to the most recently active agent whose working directory matches the reviewed repo or workspace; `--agent-target TARGET` pins one explicitly.
+- **Agent discovery:** Lumiere discovers coding agents running in [Rex](https://rex.dev) panes reporting [Program Status](https://www.superlogical.com/rex/docs/build/program-status) (such as pi, Claude Code, Codex 0.163+, and Antigravity). It auto-attaches to the most recently active agent whose working directory matches the reviewed repo or workspace; `--agent-target TARGET` pins one explicitly.
 - **Safety when the agent is waiting for input:** If the agent is waiting on a confirmation prompt, Lumiere holds comments in the queue instead of submitting into its prompt. Answer the agent, then press `s`.
 - **Without an agent:** `Enter` queues comments, and `s` exits and prints the queued review to stdout.
 - **Storage & outdated anchors:** Threads persist per repository outside the repo (`~/.local/state/lumiere/` on Linux) across every range you review. When files change, threads follow their lines if the anchored text moves cleanly; otherwise they are marked `outdated`.

@@ -1,6 +1,6 @@
 # Architecture & Core Primitives
 
-Lumiere is organized as a library crate (`src/lib.rs`) paired with a minimal CLI entrypoint (`src/main.rs`). Rather than sprawling feature folders with circular dependencies, the codebase is structured around **five orthogonal primitives** with strict one-way dependencies.
+Lumiere is organized as a library crate (`src/lib.rs`) paired with a minimal CLI entrypoint (`src/main.rs`). The codebase is structured around **five orthogonal primitives** with strict one-way dependencies.
 
 ## The five primitives
 
