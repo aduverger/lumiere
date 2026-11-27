@@ -49,7 +49,7 @@ Merging changes to `docs/**` on `main` automatically builds and deploys the site
 
 ## Continuous Integration & Releases
 
-- **`.github/workflows/ci.yml`** runs `cargo fmt --check`, `cargo clippy -- -D warnings` (default and `--no-default-features`), `cargo test` on both `ubuntu-latest` and `macos-latest`, and an MSRV check on Rust `1.89`.
+- **`.github/workflows/ci.yml`** runs `cargo fmt --check`, `cargo clippy -- -D warnings` (default and `--no-default-features`), `cargo test` on both `ubuntu-latest` and `macos-latest`, and an MSRV check on Rust `1.97.1`.
 - **`.github/workflows/dependency-review.yml`** runs GitHub Dependency Review on pull requests (failing on moderate or higher advisories).
 - **`.github/workflows/security-audit.yml`** runs a daily scheduled RustSec audit (`cargo-audit`) across all dependencies in `Cargo.lock` and opens issues on new advisories.
 - **`.github/workflows/lint-pr-title.yml`** enforces Conventional Commit PR titles so `release-plz` can determine version bumps and generate changelogs automatically.

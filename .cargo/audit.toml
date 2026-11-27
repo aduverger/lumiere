@@ -1,0 +1,17 @@
+[advisories]
+ignore = [
+  # heapless 0.8.0 is only present in Cargo.lock via faster-hex 0.10.1's
+  # `cfg(not(feature = "alloc"))` target dependency (pulled by gix-hash 0.28.1
+  # in jj-lib 0.47.1). gix-hash enables faster-hex's `std`/`alloc` feature so
+  # heapless is never compiled or linked into lumiere. Remove once jj-lib
+  # upgrades to gix 0.91+ (gix-hash 0.29 / faster-hex 2.1 / heapless 0.9.4).
+  "RUSTSEC-2026-0574",
+  "RUSTSEC-2026-0575",
+  "RUSTSEC-2026-0576",
+  "RUSTSEC-2026-0577",
+  "RUSTSEC-2026-0578",
+  "RUSTSEC-2026-0579",
+  "RUSTSEC-2026-0580",
+  "RUSTSEC-2026-0581",
+  "RUSTSEC-2026-0582",
+]
