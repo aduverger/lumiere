@@ -60,6 +60,12 @@ Lumiere is a fast, side-by-side terminal diff viewer written in Rust for reviewi
 
 ## Install
 
+### Install script (macOS & Linux)
+
+```bash
+curl -fsSL https://lumiere.computer/install.sh | sh
+```
+
 ### Homebrew (macOS & Linux)
 
 ```bash
@@ -72,19 +78,7 @@ brew install aduverger/tap/lumiere
 cargo install lumiere-cli --locked
 ```
 
-With [`cargo-binstall`](https://github.com/cargo-bins/cargo-binstall) (pre-built binary): `cargo binstall lumiere-cli`. From a local checkout: `cargo install --path . --locked` (add `--no-default-features` to build Git-only without `jj-lib`).
-
-### Pre-built binaries
-
-Download a `.tar.gz` archive (Linux `x86_64` / `aarch64`, macOS `aarch64` / `x86_64`) with its `.sha256` checksum from [GitHub Releases](https://github.com/aduverger/lumiere/releases).
-
-### Nix flake
-
-```bash
-nix run github:aduverger/lumiere -- diff
-# or install into your profile:
-nix profile install github:aduverger/lumiere
-```
+See the [installation guide](https://lumiere.computer/getting-started/installation.html) for `cargo-binstall`, `mise`, Nix, pre-built release archives, custom install paths, and building without Jujutsu (`--no-default-features`).
 
 ## Quick start
 

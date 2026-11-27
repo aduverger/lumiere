@@ -2,6 +2,39 @@
 
 Lumiere targets **Linux** and **macOS** and requires **Rust 1.89 or later** when building from source.
 
+<div class="install-tabs" data-install-tabs>
+  <div class="install-tabs-bar" role="tablist" aria-label="Install method">
+    <button type="button" class="install-tab" role="tab" aria-selected="true" data-tab="curl" data-cmd="curl -fsSL https://lumiere.computer/install.sh | sh">curl</button>
+    <button type="button" class="install-tab" role="tab" aria-selected="false" data-tab="homebrew" data-cmd="brew install aduverger/tap/lumiere">homebrew</button>
+    <button type="button" class="install-tab" role="tab" aria-selected="false" data-tab="cargo" data-cmd="cargo install lumiere-cli --locked">cargo</button>
+    <button type="button" class="install-tab" role="tab" aria-selected="false" data-tab="mise" data-cmd="mise use -g github:aduverger/lumiere">mise</button>
+    <button type="button" class="install-tab" role="tab" aria-selected="false" data-tab="nix" data-cmd="nix profile install github:aduverger/lumiere">nix</button>
+  </div>
+  <div class="install-tabs-body">
+    <span class="install-tabs-prompt" aria-hidden="true">$</span>
+    <code class="install-tabs-cmd">curl -fsSL https://lumiere.computer/install.sh | sh</code>
+    <button type="button" class="install-tabs-copy" aria-label="Copy install command" title="Copy">
+      <svg class="icon-copy" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg>
+      <svg class="icon-check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5"/></svg>
+    </button>
+  </div>
+</div>
+
+## Install script (macOS & Linux)
+
+Download the latest pre-built binary with SHA-256 verification into `~/.local/bin`:
+
+```bash
+curl -fsSL https://lumiere.computer/install.sh | sh
+```
+
+You can pin a release or choose a different directory with environment variables:
+
+```bash
+curl -fsSL https://lumiere.computer/install.sh \
+  | LUMIERE_VERSION=v0.1.1 LUMIERE_INSTALL_DIR=/usr/local/bin sh
+```
+
 ## Homebrew (macOS & Linux)
 
 ```bash
@@ -38,6 +71,14 @@ Jujutsu support is enabled by default via the `jj` Cargo feature. If you only us
 
 ```bash
 cargo install lumiere-cli --locked --no-default-features
+```
+
+## mise
+
+Install a pre-built release directly with [mise](https://mise.jdx.dev):
+
+```bash
+mise use -g github:aduverger/lumiere
 ```
 
 ## Pre-built binaries

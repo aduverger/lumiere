@@ -14,6 +14,10 @@
   --lumiere-accent-soft: rgba(240, 184, 73, 0.14);
   --lumiere-border: rgba(148, 163, 184, 0.22);
   --lumiere-win-bg: rgba(74, 222, 128, 0.12);
+  --lumiere-tabs-bg: rgba(255, 255, 255, 0.03);
+  --lumiere-tabs-border: rgba(233, 229, 216, 0.32);
+  --lumiere-tabs-shadow: rgba(0, 0, 0, 0.5);
+  --lumiere-tabs-muted: rgba(233, 229, 216, 0.56);
 }
 
 .light,
@@ -24,6 +28,10 @@
   --lumiere-accent-soft: rgba(182, 123, 21, 0.1);
   --lumiere-border: rgba(15, 23, 42, 0.14);
   --lumiere-win-bg: rgba(22, 163, 74, 0.1);
+  --lumiere-tabs-bg: #ffffff;
+  --lumiere-tabs-border: #292D30;
+  --lumiere-tabs-shadow: #292D30;
+  --lumiere-tabs-muted: rgba(41, 45, 48, 0.62);
 }
 
 .sr-only {
@@ -162,4 +170,123 @@ td {
 
 pre > code {
   border-radius: 6px;
+}
+
+.install-tabs {
+  text-align: left;
+  margin: 1.25rem 0 1.75rem;
+  border: 1.5px solid var(--lumiere-tabs-border);
+  border-radius: 10px;
+  background: var(--lumiere-tabs-bg);
+  box-shadow: 2px 3px 0 var(--lumiere-tabs-shadow);
+  overflow: hidden;
+}
+
+.hero .install-tabs {
+  max-width: 660px;
+  margin: 1.5rem auto 0;
+}
+
+.install-tabs-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--lumiere-border);
+}
+
+.install-tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--lumiere-border);
+  border-bottom: 2.5px solid transparent;
+  padding: 0.65rem 1.05rem;
+  font-family: var(--mono-font);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lumiere-tabs-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s ease, background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.install-tab:hover {
+  color: var(--fg);
+  background: var(--lumiere-accent-soft);
+}
+
+.install-tab[aria-selected="true"] {
+  color: var(--fg);
+  border-bottom-color: var(--lumiere-accent);
+  background: var(--lumiere-accent-soft);
+}
+
+.install-tab:focus-visible,
+.install-tabs-copy:focus-visible {
+  outline: 2px solid var(--lumiere-accent);
+  outline-offset: -2px;
+}
+
+.install-tabs-body {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+}
+
+.install-tabs-prompt {
+  font-family: var(--mono-font);
+  font-size: 0.92rem;
+  color: var(--lumiere-tabs-muted);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.install-tabs-body code.install-tabs-cmd {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-family: var(--mono-font);
+  font-size: 0.92rem;
+  color: var(--fg);
+}
+
+.install-tabs-copy {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--lumiere-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lumiere-accent);
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.install-tabs-copy:hover {
+  background: var(--lumiere-accent-soft);
+  border-color: var(--lumiere-accent);
+}
+
+.install-tabs-copy .icon-check {
+  display: none;
+}
+
+.install-tabs-copy.is-copied .icon-copy {
+  display: none;
+}
+
+.install-tabs-copy.is-copied .icon-check {
+  display: block;
 }
