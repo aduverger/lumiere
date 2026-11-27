@@ -174,7 +174,7 @@ pre > code {
 
 .install-tabs {
   text-align: left;
-  margin: 1.25rem 0 1.75rem;
+  margin: 2rem 0 2.5rem;
   border: 1.5px solid var(--lumiere-tabs-border);
   border-radius: 10px;
   background: var(--lumiere-tabs-bg);
@@ -183,8 +183,8 @@ pre > code {
 }
 
 .hero .install-tabs {
-  max-width: 660px;
-  margin: 1.5rem auto 0;
+  max-width: 740px;
+  margin: 2.2rem auto 0;
 }
 
 .install-tabs-bar {
@@ -199,10 +199,10 @@ pre > code {
   background: transparent;
   border: 0;
   border-right: 1px solid var(--lumiere-border);
-  border-bottom: 2.5px solid transparent;
-  padding: 0.65rem 1.05rem;
+  border-bottom: 3px solid transparent;
+  padding: 1rem 1.6rem;
   font-family: var(--mono-font);
-  font-size: 0.78rem;
+  font-size: 1.25rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -232,13 +232,13 @@ pre > code {
 .install-tabs-body {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.9rem 1rem;
+  gap: 1.1rem;
+  padding: 1.5rem 1.6rem;
 }
 
 .install-tabs-prompt {
   font-family: var(--mono-font);
-  font-size: 0.92rem;
+  font-size: 1.5rem;
   color: var(--lumiere-tabs-muted);
   user-select: none;
   flex-shrink: 0;
@@ -253,7 +253,7 @@ pre > code {
   padding: 0;
   border-radius: 0;
   font-family: var(--mono-font);
-  font-size: 0.92rem;
+  font-size: 1.5rem;
   color: var(--fg);
 }
 
@@ -262,8 +262,8 @@ pre > code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   flex-shrink: 0;
   padding: 0;
   border: 1px solid var(--lumiere-border);
@@ -272,6 +272,11 @@ pre > code {
   color: var(--lumiere-accent);
   cursor: pointer;
   transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.install-tabs-copy svg {
+  width: 18px;
+  height: 18px;
 }
 
 .install-tabs-copy:hover {
