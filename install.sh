@@ -69,7 +69,7 @@ resolve_version() {
     if [ -n "${LUMIERE_VERSION:-}" ]; then
         raw="${LUMIERE_VERSION#v}"
         case "$raw" in
-            ""|*/*|*" "*)
+            ""|*[!0-9A-Za-z._+-]*|.*|*..*)
                 die "invalid LUMIERE_VERSION: ${LUMIERE_VERSION}"
                 ;;
         esac

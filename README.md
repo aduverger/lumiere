@@ -78,7 +78,7 @@ brew install aduverger/tap/lumiere
 cargo install lumiere-cli --locked
 ```
 
-See the [installation guide](docs/src/getting-started/installation.md) for `cargo-binstall`, `mise`, Nix, pre-built release archives, custom install paths, and building without Jujutsu (`--no-default-features`).
+See the [installation guide](https://lumiere.computer/getting-started/installation.html) for `cargo-binstall`, `mise`, Nix, pre-built release archives, custom install paths, and building without Jujutsu (`--no-default-features`).
 
 ## Quick start
 
