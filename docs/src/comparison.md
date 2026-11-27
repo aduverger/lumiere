@@ -1,26 +1,26 @@
 # Comparison
 
-Lumiere sits in a growing ecosystem of terminal diff viewers and review tools. This page compares Lumiere with the tools developers most often evaluate alongside it — including interactive review TUIs, embeddable diff engines, and non-interactive Git pagers — and outlines where each tool is the better fit.
+Lumiere sits in a growing ecosystem of terminal diff viewers and review tools. This page compares Lumiere with the tools developers most often evaluate alongside it — including interactive review TUIs and non-interactive Git pagers — and outlines where each tool is the better fit.
 
 ## Feature matrix
 
-| Capability | **Lumiere** | [hunk](https://github.com/modem-dev/hunk) | [plannotator-tui](https://github.com/plannotator/plannotator-tui) | [diffs-rs](https://github.com/plannotator/diffs-rs) | [lumen](https://github.com/jnsahaj/lumen) | [difftastic](https://github.com/Wilfred/difftastic) | [delta](https://github.com/dandavison/delta) | [diff-so-fancy](https://github.com/so-fancy/diff-so-fancy) | [diff](https://www.gnu.org/software/diffutils/) |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Review-first interactive TUI | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Partial¹ | ❌ | ❌ |
-| Multi-file sidebar & tree | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Inline review comments / notes | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Live two-way agent threads in TUI | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Multi-repo workspace review | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| GitHub PR review | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Watch mode (live auto-reload) | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Git & Jujutsu (`jj`) support | ✅ | ✅² | Git only | Git / patch | ✅ | Any | Any | Any | Any |
-| Hunks-only & full-file toggle | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Split & unified / auto layouts | Side-by-side³ | ✅ | ✅ | ✅ | Side-by-side | Split / inline | ✅ | Unified | Unified |
-| Mouse support | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Syntax highlighting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Structural (AST) diffing | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Git pager / stdin patch mode | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| Markdown / plan review & gate | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Capability | **Lumiere** | [hunk](https://github.com/modem-dev/hunk) | [plannotator-tui](https://github.com/plannotator/plannotator-tui) | [lumen](https://github.com/jnsahaj/lumen) | [difftastic](https://github.com/Wilfred/difftastic) | [delta](https://github.com/dandavison/delta) | [diff-so-fancy](https://github.com/so-fancy/diff-so-fancy) | [diff](https://www.gnu.org/software/diffutils/) |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Review-first interactive TUI | ✅ | ✅ | ✅ | ✅ | ❌ | Partial¹ | ❌ | ❌ |
+| Multi-file sidebar & tree | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Inline review comments / notes | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Live two-way agent threads in TUI | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Multi-repo workspace review | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| GitHub PR review | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Watch mode (live auto-reload) | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Git & Jujutsu (`jj`) support | ✅ | ✅² | Git only | ✅ | Any | Any | Any | Any |
+| Hunks-only & full-file toggle | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Split & unified / auto layouts | Side-by-side³ | ✅ | ✅ | Side-by-side | Split / inline | ✅ | Unified | Unified |
+| Mouse support | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Syntax highlighting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Structural (AST) diffing | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Git pager / stdin patch mode | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Markdown / plan review & gate | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 1. **`delta`** is primarily a Git pager, with an optional interactive `--tui` mode powered by `gitu`.
 2. **`hunk`** supports Sapling (`sl`) in addition to Git and Jujutsu.
@@ -31,19 +31,16 @@ Lumiere sits in a growing ecosystem of terminal diff viewers and review tools. T
 End-to-end PTY benchmarks run with [`bench/bench.py`](https://github.com/aduverger/lumiere/blob/main/bench/bench.py) (140×40 terminal, median of 5 runs on a 2-vCPU Linux `aarch64` host, warm page cache) against official `linux-arm64` release binaries. Parentheses show each tool relative to Lumiere (lower is better):
 
 - **Lumiere** `0.1.0` (`lumiere diff`)
-- **hunk** `0.25.0` (`hunk diff`, standalone compiled binary)
-- **plannotator-tui** `0.12.0` (`plannotator-tui review`, powered by `diffs-rs`)
+- **hunk** `0.25.0` (`hunk diff`)
+- **plannotator-tui** `0.12.0` (`plannotator-tui review`)
 - **lumen** `2.32.0` (`lumen diff`)
-
-> [!NOTE]
-> `diffs-rs` (`diffs`) is a standalone crate/viewer for two-commit diffs and piped patches rather than working-tree reviews, so its engine is benchmarked via `plannotator-tui review` — the full review TUI built on `diffs-rs`. Non-interactive pagers (`difftastic`, `delta`, `diff-so-fancy`, `diff`) do not run an interactive TUI event loop and are omitted from this table.
 
 <img class="bench-chart bench-chart-dark" src="assets/benchmarks-dark.svg" alt="Lumiere benchmark comparison chart" />
 <img class="bench-chart bench-chart-light" src="assets/benchmarks-light.svg" alt="Lumiere benchmark comparison chart" />
 
 <div class="comparison-perf">
 
-| Metric | **Lumiere** (`0.1.0`) | **hunk** (`0.25.0`) | **plannotator-tui** (`0.12.0`, `diffs-rs`) | **lumen** (`2.32.0`) |
+| Metric | **Lumiere** (`0.1.0`) | **hunk** (`0.25.0`) | **plannotator-tui** (`0.12.0`) | **lumen** (`2.32.0`) |
 | --- | ---: | ---: | ---: | ---: |
 | Start (`small` repo, 3 files) | **23.0 ms** | 497.6 ms *(21.6×)* | 52.1 ms *(2.3×)* | 578.3 ms *(25.1×)* |
 | Peak memory (`small` repo) | **12.2 MB** | 201.8 MB *(16.5×)* | 15.1 MB *(1.2×)* | 37.3 MB *(3.1×)* |
@@ -71,8 +68,8 @@ End-to-end PTY benchmarks run with [`bench/bench.py`](https://github.com/aduverg
 
 1. **`hunk`** does not auto-render the 5.3 MiB file (`File too large to render automatically.`), so `open the large file` and `whole file view` are skipped.
 2. **`plannotator-tui`** streams only the unified patch hunks in a continuous view (so `z_large.py`'s first hunk is already on screen at startup with just `15.3 MB` RSS), and caps its whole-file view (`o`) at 5 MiB (`z_large.py is 5.3 MiB; the whole-file view shows files up to 5 MiB.`).
-3. **Lumiere** intentionally gathers filesystem events for a 500 ms debounce window (`GATHERING_TIME`) before reloading so atomic editor save-and-rename sequences settle into one reload.
-4. **`lumen 2.32.0`** does not ignore `EventKind::Access` events in `--watch` mode, so each reload triggers another reload in a loop — explaining its `1.3%` idle CPU and erratic edit-to-screen timing.
+3. **Lumiere** intentionally debounces filesystem events for 500 ms before reloading so atomic editor saves settle into one reload.
+4. **`lumen 2.32.0`** re-triggers reloads continuously on file-access events in `--watch` mode, explaining its `1.3%` idle CPU and erratic edit-to-screen timing.
 
 To reproduce on your own machine:
 
@@ -99,10 +96,8 @@ An interactive diff viewer built on OpenTUI and Pierre diffs. Choose Hunk if you
 - **TypeScript extensions** or an embeddable OpenTUI component.
 - Hunk supports agent-authored review notes (pushed into a live session via a skill), whereas Lumiere focuses on interactive two-way threads initiated by the human reviewer.
 
-### [plannotator-tui](https://github.com/plannotator/plannotator-tui) & [diffs-rs](https://github.com/plannotator/diffs-rs)
-Two closely related Rust + Ratatui projects from the Plannotator ecosystem:
-- **`plannotator-tui`** shines when you review **Markdown plans, design docs, and agent transcripts** alongside code diffs, want **scriptable approval gates** (`--gate --require-approval`), or need built-in **Herdr**, **Rex**, and **pi** dispatch. Its code review uses one-way notes/suggestions sent to an agent rather than two-way in-thread replies.
-- **`diffs-rs`** is the standalone Ratatui diff viewer and **embeddable Rust crate** powering `plannotator-tui`'s diffs. It is ideal if you want progressive streaming on massive patch files (hundreds of megabytes) from stdin or want to embed a Ratatui diff widget inside your own Rust application.
+### [plannotator-tui](https://github.com/plannotator/plannotator-tui)
+A Rust + Ratatui review TUI from the Plannotator ecosystem. Choose `plannotator-tui` if you review **Markdown plans, design docs, and agent transcripts** alongside code diffs, want **scriptable approval gates** (`--gate --require-approval`), or need built-in **Herdr**, **Rex**, and **pi** dispatch. Its code review uses one-way notes/suggestions sent to an agent rather than two-way in-thread replies.
 
 ### [lumen](https://github.com/jnsahaj/lumen)
 Lumiere's upstream origin (`v2.32.0`). Choose Lumen if you want built-in **LLM CLI subcommands** (`lumen explain`, `lumen draft`, `lumen operate`) across 10+ AI providers alongside a full-file side-by-side diff viewer. Choose Lumiere if you want hunks-only view by default, multi-repo workspaces, and live two-way coding-agent threads instead of standalone LLM commands.

@@ -4,12 +4,13 @@ Lumiere is engineered to feel instantaneous on everyday commits while staying re
 
 ## Benchmark suite
 
-The repository includes an end-to-end PTY benchmark harness in [`bench/bench.py`](https://github.com/aduverger/lumiere/blob/main/bench/bench.py). Rather than benchmarking isolated functions, it launches the compiled release binary inside a 140×40 pseudo-terminal, feeds real terminal escape replies and keystrokes (`Alt+k`, `z`, `q`), and measures wall-clock latency, peak RSS memory, and idle CPU usage across four synthetic Git repositories:
+The repository includes an end-to-end PTY benchmark harness in [`bench/bench.py`](https://github.com/aduverger/lumiere/blob/main/bench/bench.py). It launches the compiled release binary inside a 140×40 pseudo-terminal, feeds real terminal escape replies and keystrokes, and measures wall-clock latency, peak RSS memory, and idle CPU usage across five synthetic Git repositories:
 
 | Repository fixture | Contents |
 |---|---|
 | **`small`** | 3 modified Python files (120 lines each) |
 | **`many`** | 300 modified Python files across 15 directories (240 lines each) |
+| **`scroll`** | 1 modified Python file (6,000 lines, 400 hunks) |
 | **`large`** | 1 small Python file + 1 modified 360,000-line Python file |
 | **`ignored`** | `small` plus 8,000 gitignored `.venv/` subdirectories (48,000 files) |
 
@@ -26,67 +27,68 @@ python3 bench/bench.py compare baseline candidate
 ## Measured results
 
 > [!TIP]
-> For side-by-side benchmark numbers comparing **Lumiere** against **plannotator-tui (`diffs-rs`)**, **hunk**, and **lumen**, see [Comparison — Performance comparison](../comparison.md#performance-comparison).
+> For side-by-side benchmark numbers comparing **Lumiere** against **plannotator-tui**, **hunk**, and **lumen**, see [Comparison — Performance comparison](../comparison.md#performance-comparison).
 
-Median of 5 runs on a 2-vCPU Linux host comparing the pre-refactor release binary against the current release binary:
+Median of 5 runs on Linux (`aarch64`, 2 vCPU, 140×40 PTY, warm page cache) for `lumiere 0.1.0`:
 
-| Metric | Before | Current | Change |
-|---|---:|---:|---:|
-| Start (`small` repo) | 45.6 ms | **29.0 ms** | **-36%** |
-| Start (`small` repo, `--watch`) | 50.8 ms | **18.1 ms** | **-64%** |
-| File change to screen (`--watch`) | 522.3 ms | 553.4 ms | +6% |
-| Idle CPU (`--watch`) | 0.5% | **0.0%** | **-100%** |
-| Peak memory (`small` repo) | 26.4 MB | **12.2 MB** | **-54%** |
-| Start (`many` repo, 300 files) | 79.5 ms | **24.6 ms** | **-69%** |
-| First key answered | 199.8 ms | **7.2 ms** | **-96%** |
-| Next file (`Alt+k`) | 4.7 ms | **4.6 ms** | **-2%** |
-| Start (`many` repo, `--watch`) | 74.1 ms | **25.6 ms** | **-65%** |
-| Start (`large` repo, 360k lines) | 231.4 ms | **22.6 ms** | **-90%** |
-| Open the 360k-line file | 250.4 ms | **168.7 ms** | **-33%** |
-| 360k-line file, toggle full-file view (`z`) | 237.5 ms | **111.5 ms** | **-53%** |
-| Peak memory (`large` file) | 142.8 MB | 155.7 MB | +9% |
-| Start (`large` repo, `--watch`) | 242.5 ms | **19.1 ms** | **-92%** |
-| Start (`ignored` repo, 8k `.venv` dirs) | 46.5 ms | **20.0 ms** | **-57%** |
-| Start (`ignored` repo, `--watch`) | 44.5 ms | **25.2 ms** | **-43%** |
+| Metric | Median |
+|---|---:|
+| Start (`small` repo, 3 files) | **23.0 ms** |
+| Peak memory (`small` repo) | **12.2 MB** |
+| Start (`small` repo, `--watch`) | **19.4 ms** |
+| File change to screen (`--watch`) | 508.3 ms |
+| Idle CPU (`--watch`, over 4 s) | **0.0%** |
+| Start (`many` repo, 300 files) | **27.7 ms** |
+| First key answered (`many`) | **10.4 ms** |
+| Next file (`many`) | **4.6 ms** |
+| Sidebar toggle (`many`, 300 files) | **1.6 ms** |
+| Start (`many` repo, `--watch`) | **24.7 ms** |
+| Start (`large` repo, 360k lines) | **23.7 ms** |
+| Open the 360k-line file (`5.3 MiB`) | **166.5 ms** |
+| Toggle full-file view (`z`, `5.3 MiB`) | **110.2 ms** |
+| Peak memory (`large` repo) | 155.7 MB |
+| Start (`large` repo, `--watch`) | **20.3 ms** |
+| Start (`ignored` repo, 8k `.venv` dirs) | **24.4 ms** |
+| Start (`ignored` repo, `--watch`) | **22.4 ms** |
+| Scroll step, median / p95 (6k-line file) | **0.7 ms** / **0.9 ms** |
+| Terminal resize (`140×40 ↔ 100×30`) | **3.1 ms** |
 
 > [!NOTE]
-> `file change to screen, watch` is intentionally bounded below by the 500 ms `GATHERING_TIME` debounce window in `diff::watcher` so editors that write temp files and rename them settle into a single reload.
+> `file change to screen, watch` is bounded below by the 500 ms `GATHERING_TIME` debounce window in `diff::watcher` so atomic editor save-and-rename sequences settle into a single reload.
 
 ## Key architectural optimizations
 
-### 1. Non-blocking background `AgentWorker` (-97% first-key latency)
+### 1. Non-blocking background `AgentWorker`
 
-Previously, Rex pane discovery ran synchronously on the UI thread immediately after the first frame (and again every 3 seconds for status refreshes and whenever opening the `A` picker). Any `rex` CLI invocation stalled the event loop for ~200 ms.
+`review::agent::AgentWorker` runs all host queries (`Attach`, `Refresh`, `FindCandidates`) on a dedicated background thread over `std::sync::mpsc` channels so multiplexer CLI calls never stall the UI event loop.
 
-Now `review::agent::AgentWorker` runs all Rex queries on a dedicated background thread over `std::sync::mpsc` channels (`Attach`, `Refresh`, `FindCandidates`). The UI thread remains immediately responsive (**6.1 ms** first-key latency) and reconciles responses atomically on wakeup.
+### 2. Event-driven `dirty` redraws
 
-### 2. Event-driven `dirty` redraws (0.0% idle CPU)
+`App` tracks a `dirty: bool` flag and only calls `terminal.draw(...)` when input arrives, the terminal resizes, a watcher event fires, `threads.json` changes on disk, an `AgentResponse` updates visible state, or a status notice expires. While idle in `--watch` mode, Lumiere consumes **0.0% CPU**.
 
-Rather than redrawing the entire terminal unconditionally every poll interval, `App` tracks a `dirty: bool` flag and only calls `terminal.draw(...)` when input arrives, the terminal resizes, a watcher event fires, `threads.json` changes on disk, an `AgentResponse` updates visible state, or a status notice expires. While idle in `--watch` mode, Lumiere consumes **0.0% CPU**.
+### 3. Lazy per-language Tree-sitter compilation
 
-### 3. Lazy per-language Tree-sitter compilation (-61% baseline RSS, -52% startup)
-
-Both `diff::highlight::config` and `diff::context` compile Tree-sitter `HighlightConfiguration` and scope `Query` objects lazily per language via `OnceLock`, instead of compiling all 16+ grammars at startup. Opening a Python repository only compiles the Python grammar, cutting small-repo peak RSS from **26.4 MB to 10.2 MB** and startup time from **45.6 ms to 21.7 ms**.
+Both `diff::highlight::config` and `diff::context` compile Tree-sitter `HighlightConfiguration` and scope `Query` objects lazily per language via `OnceLock`, avoiding upfront compilation of unused grammars.
 
 ### 4. Cached `ComputedDiff` and branch name
 
-`ui::state::AppState` caches the active file's `ComputedDiff` (paired side-by-side rows, hunk indices, `LineStats`, and `max_old_width` / `max_new_width`) and the repository's current branch name. Per-frame rendering, footer statistics, and horizontal scroll clamping are O(1) instead of rescanning hundreds of thousands of lines or invoking VCS lookups on every draw.
+`ui::state::AppState` caches the active file's `ComputedDiff` (paired side-by-side rows, hunk indices, `LineStats`, and `max_old_width` / `max_new_width`) and the repository's current branch name. Per-frame rendering, footer statistics, and horizontal scroll clamping are O(1) instead of rescanning lines or invoking VCS lookups on every draw.
 
-### 5. Lazy per-file blob loading, background stats, and batched reads (-69% on 300 files, -90% on 360k lines)
+### 5. Lazy per-file blob loading, background stats, and batched reads
 
 On Git repositories, startup reads only changed file paths and statuses (`A`/`M`/`D`) from tree deltas / `libgit2` status, then loads blob contents on demand as files are opened (or on `Ctrl+F` global search and for files with persisted threads). Repo-wide `+added -removed` totals are computed asynchronously on a background thread using `libgit2`'s C `Diff::stats()` (guarded by a generation counter against stale reloads). When all files must be loaded together, `VcsBackend::get_files_content_at_ref` resolves the revision tree once per batch.
 
 ### 6. Large-file threshold (>1 MB) and zero-alloc hot paths
 
 - Files exceeding 1 MB skip full-file Tree-sitter parsing and scope extraction (`AppState::current_file_is_too_large_to_parse`), falling back to fast single-line highlighting of visible rows only while showing a `large file: colours are approximate` notice.
-- `diff::context::extract_line` scans bytes directly to the target line in O(line length) instead of collecting every line of a 360k-line file into a `Vec<&str>`.
+- `diff::context::extract_line` scans bytes directly to the target line in O(line length) instead of collecting every line of a file into a `Vec<&str>`.
 - `ui::views::sidebar` checks directory path prefixes without heap-allocating `format!("{dir}/")` strings on every render pass.
 - `ui::input` coalesces consecutive buffered mouse wheel events before scrolling and redrawing once.
 
-### 7. Gitignore-aware watch startup on Linux (-42% to -56% `--watch` startup)
+### 7. Gitignore-aware watch startup on Linux
 
-On Linux, `diff::watcher` installs non-recursive inotify watches only on non-gitignored directories (plus `.git/` metadata for commits/checkouts) instead of walking `.venv/` or `node_modules/`. Adding 8,000 gitignored directories adds just ~4 ms to `--watch` startup.
+On Linux, `diff::watcher` installs non-recursive inotify watches only on non-gitignored directories (plus `.git/` metadata for commits/checkouts) instead of walking `.venv/` or `node_modules/`.
 
 ### 8. Release build profile
 
-`Cargo.toml` configures `[profile.release]` with `lto = true`, `codegen-units = 1`, and `strip = "symbols"`, and trims unused `git2` features (`https` / `vendored-openssl`, which Lumiere never calls because remote operations go through `gh`).
+`Cargo.toml` configures `[profile.release]` with `lto = true`, `codegen-units = 1`, and `strip = "symbols"`, and omits unused `git2` network features (`https` / `vendored-openssl`, since remote operations go through `gh`).

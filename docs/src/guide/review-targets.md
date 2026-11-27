@@ -26,7 +26,7 @@ lumiere diff origin/main...- --watch
 
 - Changes are gathered over a 500 ms debounce window so rapid saves or formatter passes collapse into a single reload.
 - Files that change on disk are automatically unmarked as viewed so you never miss new edits by an agent or formatter.
-- On **Linux**, the watcher walks the repository and skips directories ignored by Git (such as `node_modules/`, `.venv/`, and `target/`), avoiding `inotify` watch exhaustion and startup delays.
+- On **Linux**, watch mode skips gitignored directories (such as `node_modules/`, `.venv/`, and `target/`) to keep startup fast and avoid hitting watch limits.
 - Watch mode is unavailable in GitHub PR mode (`--pr` / `--detect-pr`).
 
 ## Stacked commit review (`--stacked`)
@@ -60,10 +60,10 @@ lumiere diff https://github.com/owner/repo/pull/123
 lumiere diff --detect-pr
 ```
 
-- Base and head file contents are fetched in parallel (bounded to 8 concurrent `gh api` workers to stay comfortably below GitHub secondary rate limits).
+- Base and head file contents are fetched in parallel.
 - Fork PRs (including PRs whose fork repository has since been deleted) are supported cleanly.
-- File viewed status (`Space`) syncs bidirectionally with GitHub's "Viewed" checkboxes via GraphQL mutations.
-- Press <kbd>o</kbd> to open the current file directly in your browser at its exact `#diff-<sha256>` anchor on GitHub.
+- File viewed status (`Space`) syncs bidirectionally with GitHub's "Viewed" checkboxes.
+- Press <kbd>o</kbd> to open the current file directly on GitHub in your browser.
 
 ## Filtering and focusing files
 

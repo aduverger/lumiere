@@ -30,16 +30,16 @@ By default, Lumiere opens in **hunks-only** mode: each changed hunk is displayed
 
 ## Sticky scope context
 
-When scrolling inside a function, class, impl block, or method in supported languages (Rust, Python, TypeScript, JavaScript, Go, C, C++, Java), Lumiere pins enclosing scope headers at the top of each panel (`12 ~ fn render_diff(...)`) using Tree-sitter AST queries.
+When scrolling inside a function, class, impl block, or method in supported languages (Rust, Python, TypeScript, JavaScript, Go, C, C++, Java), Lumiere pins enclosing scope headers at the top of each panel (`12 ~ fn render_diff(...)`).
 
-> **Large files (> 1 MB):** Files over 1 MB skip whole-file Tree-sitter parsing and sticky context headers to keep navigation instantaneous. Lines are still syntax-highlighted on demand line by line, and the footer displays `large file: colours are approximate`.
+> **Large files (> 1 MB):** Large files omit sticky scope headers and highlight lines on demand to stay responsive. The footer displays `large file: colours are approximate`.
 
 ## In-file search (`/`) and global fuzzy search (`Ctrl+F`)
 
 | Mode | Trigger | Scope | Navigation |
 |---|---|---|---|
 | **In-file search** | <kbd>/</kbd> | Lines currently visible in the active file | <kbd>Enter</kbd> confirms, <kbd>n</kbd>/<kbd>N</kbd> or <kbd>↓</kbd>/<kbd>↑</kbd> step matches, <kbd>Esc</kbd> clears |
-| **Global fuzzy search** | <kbd>Ctrl+F</kbd> | All lines across every changed file | Telescope-style 50/50 split with fuzzy matching (`nucleo-matcher`) and syntax-highlighted unified preview |
+| **Global fuzzy search** | <kbd>Ctrl+F</kbd> | All lines across every changed file | Split view with fuzzy matching and syntax-highlighted unified preview |
 
 In **Global fuzzy search**:
 - Type to fuzzy-filter across `filename:line  content`.

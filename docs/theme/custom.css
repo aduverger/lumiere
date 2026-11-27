@@ -1,35 +1,69 @@
 :root {
-  --lumiere-accent: #e6b450;
-  --lumiere-accent-soft: rgba(230, 180, 80, 0.14);
+  /* Brand palette */
+  --lumiere-carbon: #111418;
+  --lumiere-ivory: #E9E5D8;
+  --lumiere-amber: #F0B849;
+  --lumiere-paper: #F5F3ED;
+  --lumiere-graphite: #292D30;
+  --lumiere-amber-light: #B67B15;
+
+  /* Dark theme */
+  --lumiere-logo-base: var(--lumiere-ivory);
+  --lumiere-logo-accent: var(--lumiere-amber);
+  --lumiere-accent: var(--lumiere-amber);
+  --lumiere-accent-soft: rgba(240, 184, 73, 0.14);
   --lumiere-border: rgba(148, 163, 184, 0.22);
   --lumiere-win-bg: rgba(74, 222, 128, 0.12);
 }
 
 .light,
 .rust {
-  --lumiere-accent: #b45309;
-  --lumiere-accent-soft: rgba(180, 83, 9, 0.1);
+  --lumiere-logo-base: var(--lumiere-graphite);
+  --lumiere-logo-accent: var(--lumiere-amber-light);
+  --lumiere-accent: var(--lumiere-amber-light);
+  --lumiere-accent-soft: rgba(182, 123, 21, 0.1);
   --lumiere-border: rgba(15, 23, 42, 0.14);
   --lumiere-win-bg: rgba(22, 163, 74, 0.1);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .hero {
   text-align: center;
-  padding: 1.5rem 0 2rem;
+  padding: 2rem 0 2.25rem;
   border-bottom: 1px solid var(--lumiere-border);
   margin-bottom: 2rem;
 }
 
-.hero img {
-  width: 96px;
+.hero-logo {
+  display: block;
+  width: min(340px, 85%);
   height: auto;
-  margin-bottom: 0.75rem;
+  margin: 0 auto 1rem;
 }
 
-.hero h1 {
-  margin: 0.25rem 0 0.5rem;
-  font-size: 2.4rem;
-  letter-spacing: -0.02em;
+.hero-logo-light {
+  display: none;
+}
+
+.light .hero-logo-dark,
+.rust .hero-logo-dark {
+  display: none;
+}
+
+.light .hero-logo-light,
+.rust .hero-logo-light {
+  display: block;
 }
 
 .hero p {

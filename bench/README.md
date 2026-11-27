@@ -79,7 +79,7 @@ python3 bench/chart.py --lumiere lumiere --hunk hunk --plannotator-tui plannotat
 
 Median of 5 runs on Linux (`aarch64`, 2 vCPU, 140×40 PTY, warm page cache) against official release binaries. Parentheses show each tool relative to Lumiere (lower is better):
 
-| Metric | **Lumiere** (`0.1.0`) | **hunk** (`0.25.0`) | **plannotator-tui** (`0.12.0`, `diffs-rs`) | **lumen** (`2.32.0`) |
+| Metric | **Lumiere** (`0.1.0`) | **hunk** (`0.25.0`) | **plannotator-tui** (`0.12.0`) | **lumen** (`2.32.0`) |
 | --- | ---: | ---: | ---: | ---: |
 | Start (`small` repo, 3 files) | **23.0 ms** | 497.6 ms *(21.6×)* | 52.1 ms *(2.3×)* | 578.3 ms *(25.1×)* |
 | Peak memory (`small` repo) | **12.2 MB** | 201.8 MB *(16.5×)* | 15.1 MB *(1.2×)* | 37.3 MB *(3.1×)* |

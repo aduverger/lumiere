@@ -22,7 +22,7 @@ lumiere diff origin/main...- --watch
 
 - Press <kbd>R</kbd> to open the **Repositories** picker. It marks the current repository, shows thread counts for every opened repository, and flags unavailable repositories.
 - The footer prefixes the current branch or reference with the repository name (`api · origin/main...-`).
-- Switching repositories parks the previous repository's full `AppState` in memory — preserving its open threads, viewed files, viewed hunks, collapsed directories, and scroll position.
+- Switching repositories preserves each repository's open threads, viewed files, viewed hunks, collapsed directories, and scroll position.
 - Watch mode (<kbd>w</kbd>) follows the repository currently on screen; returning to a parked repository while watch mode is enabled triggers a fresh reload so edits made while off-screen are picked up.
 
 ## Threads and agents across a workspace

@@ -11,7 +11,7 @@ This page explains how Lumiere transforms raw file versions into a syntax-highli
 - `Range { from, to }` (`from -> to`, with `A...B` resolved to `merge-base(A, B) -> B`)
 - `RangeToWorkingTree { from }` (`from -> disk`, with `A...-` resolved to `merge-base(A, parent) -> disk`)
 
-For GitHub PRs (`diff::github`), Lumiere fetches metadata via parameterized GraphQL queries (`gh api graphql -f ... -F ...`) deserialized into typed `serde` structs — avoiding string interpolation and fragile manual JSON slicing. File contents for base and head revisions are pulled by a bounded pool of 8 worker threads (`PR_FETCH_CONCURRENCY = 8`).
+For GitHub PRs (`diff::github`), Lumiere fetches metadata via parameterized GraphQL queries (`gh api graphql -f ... -F ...`) deserialized into typed `serde` structs. File contents for base and head revisions are pulled by a bounded pool of 8 worker threads (`PR_FETCH_CONCURRENCY = 8`).
 
 ## 2. Side-by-side pairing and word diff (`src/diff/algo.rs`)
 

@@ -24,7 +24,7 @@ A missing default config file is silently ignored. A malformed JSON file or a mi
 
 ## Precedence rules
 
-- **Theme:** `--theme` CLI flag → `theme` in config file → `LUMIERE_THEME` environment variable → terminal light/dark background auto-detection (`terminal-light`).
+- **Theme:** `--theme` CLI flag → `theme` in config file → `LUMIERE_THEME` environment variable → terminal light/dark background auto-detection.
 - **Wrap:** `--wrap` CLI flag OR `wrap: true` in config file.
 - **View mode:** `--view` CLI flag → `view` in config file → `"hunks"`.
 
