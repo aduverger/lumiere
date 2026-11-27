@@ -140,6 +140,21 @@ fn rounded_block(title: &str, focused_border: bool) -> Block<'static> {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(border_color))
+        .style(Style::default().bg(t.ui.bg))
+}
+
+fn dim_backdrop(frame: &mut Frame, area: Rect) {
+    let t = theme::get();
+    let buf = frame.buffer_mut();
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            if let Some(cell) = buf.cell_mut(Position::new(x, y)) {
+                cell.set_fg(t.ui.text_muted);
+                cell.set_bg(t.ui.bg);
+                cell.modifier = Modifier::DIM;
+            }
+        }
+    }
 }
 
 impl Modal {
@@ -328,6 +343,7 @@ impl Modal {
         let modal_y = area.height.saturating_sub(modal_height) / 2;
         let modal_area = Rect::new(modal_x, modal_y, modal_width, modal_height);
 
+        dim_backdrop(frame, area);
         frame.render_widget(Clear, modal_area);
 
         match &self.content {
@@ -1134,5 +1150,52 @@ mod tests {
         assert!(with_editor.contains("Enter send"));
         assert!(with_editor.contains("comment-08 body line"));
         assert_eq!(with_editor.matches("unsent draft text").count(), 1);
+    }
+
+    #[test]
+    fn test_floating_modal_dims_backdrop_and_pads_thread_top() {
+        let t = theme::get();
+        let thread = Thread::new(
+            "src/app.rs".to_string(),
+            AnnotationTarget::File,
+            None,
+            Comment::human("hello".to_string(), false),
+        );
+        let modal = Modal::thread_view(thread.id.clone(), 4, false);
+        let mut terminal = Terminal::new(TestBackend::new(80, 20)).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                frame.render_widget(
+                    Paragraph::new("bg").style(
+                        Style::default()
+                            .fg(t.ui.status_added)
+                            .bg(t.diff.added_bg)
+                            .bold(),
+                    ),
+                    area,
+                );
+                modal.render(frame, std::slice::from_ref(&thread), None);
+            })
+            .expect("draw");
+
+        let buf = terminal.backend().buffer();
+        let outside = buf.cell((0, 0)).unwrap();
+        assert_eq!(outside.fg, t.ui.text_muted);
+        assert_eq!(outside.bg, t.ui.bg);
+        assert_eq!(outside.modifier, Modifier::DIM);
+
+        let (modal_x, modal_y) = (0..20u16)
+            .find_map(|y| {
+                (0..80u16).find_map(|x| (buf.cell((x, y))?.symbol() == "╭").then_some((x, y)))
+            })
+            .expect("modal top-left border");
+        let modal_right = (modal_x..80u16)
+            .find(|&x| buf.cell((x, modal_y)).is_some_and(|c| c.symbol() == "╮"))
+            .expect("modal top-right border");
+        let top_pad_row = modal_y + 1;
+        for x in (modal_x + 1)..modal_right {
+            assert_eq!(buf.cell((x, top_pad_row)).unwrap().symbol(), " ");
+        }
     }
 }

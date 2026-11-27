@@ -761,9 +761,8 @@ impl<'a> App<'a> {
                     .active_modal
                     .as_ref()
                     .and_then(|modal| modal.thread_reply_hit(mouse.column, mouse.row))
-                    .map(str::to_string)
                 {
-                    if let Some(thread) = self.state.thread_by_id(&thread_id) {
+                    if let Some(thread) = self.state.thread_by_id(thread_id) {
                         self.annotation_editor = Some(AnnotationEditor::for_thread(thread));
                     }
                     return;
@@ -803,11 +802,13 @@ impl<'a> App<'a> {
                     return;
                 }
 
-                let hit_thread = self.state.annotation_rects.iter().find_map(|hit| {
-                    rect_contains(hit.area, mouse.column, mouse.row).then(|| hit.thread_id.clone())
-                });
-                if let Some(id) = hit_thread {
-                    if let Some(thread) = self.state.thread_by_id(&id) {
+                if let Some(hit) = self
+                    .state
+                    .annotation_rects
+                    .iter()
+                    .find(|hit| rect_contains(hit.area, mouse.column, mouse.row))
+                {
+                    if let Some(thread) = self.state.thread_by_id(&hit.thread_id) {
                         self.active_modal = Some(Modal::thread_view(
                             thread.id.clone(),
                             self.state.settings.tab_width,

@@ -177,8 +177,18 @@ impl ThreadViewState {
             .border_style(Style::default().fg(t.ui.border_focused))
             .style(Style::default().bg(t.ui.bg));
 
-        let inner = block.inner(area);
+        let block_inner = block.inner(area);
         frame.render_widget(block, area);
+        let inner = if block_inner.height >= 4 {
+            Rect::new(
+                block_inner.x,
+                block_inner.y + 1,
+                block_inner.width,
+                block_inner.height - 1,
+            )
+        } else {
+            block_inner
+        };
 
         if inner.height == 0 || inner.width == 0 {
             self.last_max_scroll.set(0);
@@ -205,7 +215,7 @@ impl ThreadViewState {
             (chunks[0], None)
         } else {
             self.last_editor_rect.set(None);
-            if inner.height >= 5 {
+            if inner.height >= 5 && inner.width >= 5 {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([
