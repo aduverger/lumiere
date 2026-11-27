@@ -2,12 +2,24 @@
 
 Lumiere targets **Linux** and **macOS** and requires **Rust 1.89 or later** when building from source.
 
-## Install with Cargo
-
-Install the latest version directly from GitHub:
+## Homebrew (macOS & Linux)
 
 ```bash
-cargo install --git https://github.com/aduverger/lumiere --locked
+brew install aduverger/tap/lumiere
+```
+
+## Install with Cargo
+
+Install from [crates.io](https://crates.io/crates/lumiere-cli):
+
+```bash
+cargo install lumiere-cli --locked
+```
+
+Or download a pre-built binary via [`cargo-binstall`](https://github.com/cargo-bins/cargo-binstall):
+
+```bash
+cargo binstall lumiere-cli
 ```
 
 Or from a local clone:
@@ -18,14 +30,14 @@ cd lumiere
 cargo install --path . --locked
 ```
 
-Both commands place the `lumiere` binary in `~/.cargo/bin`.
+All commands place the `lumiere` binary in `~/.cargo/bin`.
 
 ### Building without Jujutsu (`jj-lib`)
 
 Jujutsu support is enabled by default via the `jj` Cargo feature. If you only use Git and want a smaller binary and faster compile time, build with `--no-default-features`:
 
 ```bash
-cargo install --path . --locked --no-default-features
+cargo install lumiere-cli --locked --no-default-features
 ```
 
 ## Pre-built binaries
@@ -33,6 +45,7 @@ cargo install --path . --locked --no-default-features
 Tagged releases publish pre-built archives and SHA-256 checksums on the [GitHub Releases](https://github.com/aduverger/lumiere/releases) page for:
 
 - `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
 - `aarch64-apple-darwin` (Apple Silicon)
 - `x86_64-apple-darwin` (Intel macOS)
 
