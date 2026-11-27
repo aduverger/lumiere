@@ -1,13 +1,31 @@
 [package]
-name = "lumiere"
+name = "lumiere-cli"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.89"
 license = "MIT"
 description = "Review diffs in the terminal and discuss them with your coding agent."
+homepage = "https://lumiere.computer"
+repository = "https://github.com/aduverger/lumiere"
+readme = "README.md"
 keywords = ["cli", "terminal", "git", "diff", "review"]
 categories = ["command-line-interface", "command-line-utilities"]
-repository = "https://github.com/aduverger/lumiere"
+exclude = [
+  "assets/",
+  "bench/",
+  "docs/",
+  "pi-extension/",
+  "plan-*.md",
+  "flake.nix",
+  "flake.lock",
+  ".github/",
+  "release-plz.toml",
+]
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/lumiere-v{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
 
 [lib]
 name = "lumiere"

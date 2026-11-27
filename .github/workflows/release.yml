@@ -1,37 +1,105 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to build and upload assets for (e.g. v0.1.0)"
+        description: "Existing release tag to build assets and update Homebrew for (e.g. v0.1.0)"
         required: true
         type: string
 
-permissions:
-  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  release-plz-pr:
+    name: Release PR
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run release-plz (release-pr)
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+
+  release-plz-release:
+    name: Release & Publish Crate
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.tag.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run release-plz (release)
+        id: release
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract release tag
+        id: tag
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        env:
+          RELEASES_JSON: ${{ steps.release.outputs.releases }}
+        run: |
+          tag_name=$(printf '%s' "$RELEASES_JSON" | jq -r '.[0].tag // empty')
+          if [ -z "$tag_name" ]; then
+            echo "::error::release-plz reported releases_created=true but no tag was found"
+            exit 1
+          fi
+          echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build (${{ matrix.target }})
+    needs: [release-plz-release]
+    if: ${{ always() && !cancelled() && (github.event_name == 'workflow_dispatch' || (needs.release-plz-release.result == 'success' && needs.release-plz-release.outputs.releases_created == 'true')) }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            native: true
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            native: true
           - os: macos-latest
             target: aarch64-apple-darwin
+            native: true
           - os: macos-latest
             target: x86_64-apple-darwin
+            native: false
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     env:
-      RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      RELEASE_TAG: ${{ inputs.tag || needs.release-plz-release.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -47,6 +115,16 @@ jobs:
         run: |
           export LUMIERE_VERSION="${RELEASE_TAG#v}"
           cargo build --release --locked --target ${{ matrix.target }}
+      - name: Smoke test binary
+        if: ${{ matrix.native }}
+        shell: bash
+        run: |
+          out=$("./target/${{ matrix.target }}/release/lumiere" --version)
+          echo "$out"
+          echo "$out" | grep -qF "${RELEASE_TAG#v}" || {
+            echo "::error::Binary version '$out' does not match '${RELEASE_TAG#v}'"
+            exit 1
+          }
       - name: Package archive and checksum
         shell: bash
         run: |
@@ -66,19 +144,118 @@ jobs:
           path: |
             lumiere-*.tar.gz
             lumiere-*.tar.gz.sha256
+          if-no-files-found: error
 
-  publish:
+  upload:
     name: Upload Release Assets
-    needs: build
+    needs: [release-plz-release, build]
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag_name: ${{ steps.tag.outputs.tag_name }}
     env:
-      RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      RELEASE_TAG: ${{ inputs.tag || needs.release-plz-release.outputs.tag_name }}
     steps:
+      - name: Export release tag
+        id: tag
+        run: echo "tag_name=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v8
         with:
+          pattern: lumiere-*
           path: dist
           merge-multiple: true
       - name: Upload assets to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "$RELEASE_TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  homebrew:
+    name: Update Homebrew Tap
+    needs: [upload]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: {}
+    env:
+      RELEASE_TAG: ${{ needs.upload.outputs.tag_name }}
+      HAS_TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN != '' }}
+    steps:
+      - name: Skip notice
+        if: ${{ env.HAS_TAP_TOKEN != 'true' }}
+        run: echo "::warning::TAP_GITHUB_TOKEN not set — skipping Homebrew tap update"
+
+      - name: Checkout Homebrew tap
+        if: ${{ env.HAS_TAP_TOKEN == 'true' }}
+        uses: actions/checkout@v7
+        with:
+          repository: aduverger/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          persist-credentials: true
+
+      - name: Download release checksums
+        if: ${{ env.HAS_TAP_TOKEN == 'true' }}
+        uses: actions/download-artifact@v8
+        with:
+          pattern: lumiere-*
+          path: ${{ runner.temp }}/dist
+          merge-multiple: true
+
+      - name: Update Formula/lumiere.rb
+        if: ${{ env.HAS_TAP_TOKEN == 'true' }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          sha() { awk '{print $1}' "${RUNNER_TEMP}/dist/lumiere-${RELEASE_TAG}-$1.tar.gz.sha256"; }
+          url() { echo "https://github.com/aduverger/lumiere/releases/download/${RELEASE_TAG}/lumiere-${RELEASE_TAG}-$1.tar.gz"; }
+
+          mkdir -p Formula
+          cat > Formula/lumiere.rb << EOF
+          class Lumiere < Formula
+            desc "Review diffs in the terminal and discuss them with your coding agent"
+            homepage "https://lumiere.computer"
+            version "${version}"
+            license "MIT"
+
+            on_macos do
+              on_intel do
+                url "$(url x86_64-apple-darwin)"
+                sha256 "$(sha x86_64-apple-darwin)"
+              end
+
+              on_arm do
+                url "$(url aarch64-apple-darwin)"
+                sha256 "$(sha aarch64-apple-darwin)"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "$(url x86_64-unknown-linux-gnu)"
+                sha256 "$(sha x86_64-unknown-linux-gnu)"
+              end
+
+              on_arm do
+                url "$(url aarch64-unknown-linux-gnu)"
+                sha256 "$(sha aarch64-unknown-linux-gnu)"
+              end
+            end
+
+            def install
+              bin.install "lumiere"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/lumiere --version")
+            end
+          end
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/lumiere.rb
+          if git diff --cached --quiet; then
+            echo "Formula/lumiere.rb is already up to date for ${RELEASE_TAG}"
+            exit 0
+          fi
+          git commit -m "chore(lumiere): bump to ${version}"
+          git push

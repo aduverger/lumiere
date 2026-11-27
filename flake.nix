@@ -25,7 +25,7 @@
               manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
             in
             pkgs.rustPlatform.buildRustPackage {
-              pname = manifest.name;
+              pname = "lumiere";
               version = manifest.version;
 
               cargoLock.lockFile = ./Cargo.lock;
