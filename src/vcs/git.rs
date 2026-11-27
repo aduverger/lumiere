@@ -195,7 +195,7 @@ impl VcsBackend for GitBackend {
 
         Ok(head
             .is_branch()
-            .then(|| head.shorthand().map(String::from))
+            .then(|| head.shorthand().ok().map(String::from))
             .flatten())
     }
 
@@ -227,7 +227,7 @@ impl VcsBackend for GitBackend {
 
         let mut files: HashMap<String, FileStatus> = HashMap::new();
         for entry in statuses.iter() {
-            let Some(path) = entry.path() else {
+            let Ok(path) = entry.path() else {
                 continue;
             };
             let st = entry.status();
@@ -316,7 +316,7 @@ impl VcsBackend for GitBackend {
 
             let commit_id = oid.to_string();
             let short_id = commit_id[..7.min(commit_id.len())].to_string();
-            let summary = commit.summary().unwrap_or("").to_string();
+            let summary = commit.summary().ok().flatten().unwrap_or("").to_string();
 
             if self
                 .get_changed_files(&commit_id)
