@@ -4,7 +4,8 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 use serde::Deserialize;
-use spinoff::{spinners, Color, Spinner};
+
+use crate::ui::spinner::Spinner;
 
 use super::FileDiff;
 
@@ -338,14 +339,10 @@ pub fn detect_current_branch_pr() -> Result<String, String> {
 }
 
 pub fn load_pr_file_diffs(pr_info: &PrInfo) -> Result<Vec<FileDiff>, String> {
-    let mut spinner = Spinner::new(
-        spinners::Dots,
-        format!(
-            "Fetching file list for {}/{}#{}",
-            pr_info.repo_owner, pr_info.repo_name, pr_info.number
-        ),
-        Color::Cyan,
-    );
+    let mut spinner = Spinner::new(format!(
+        "Fetching file list for {}/{}#{}",
+        pr_info.repo_owner, pr_info.repo_name, pr_info.number
+    ));
     load_pr_file_diffs_inner(pr_info, Some(&mut spinner))
 }
 

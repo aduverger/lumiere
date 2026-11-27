@@ -3,6 +3,7 @@ pub mod editor;
 pub mod input;
 pub mod keybindings;
 pub mod markdown;
+pub mod spinner;
 pub mod state;
 pub mod theme;
 pub mod views;
@@ -26,7 +27,6 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::prelude::*;
-use spinoff::{spinners, Color, Spinner};
 
 use crate::diff::github::{
     detect_current_branch_pr, fetch_pr_info, fetch_viewed_files, load_pr_file_diffs,
@@ -44,6 +44,7 @@ use crate::ui::editor::AnnotationEditor;
 use crate::ui::input::{
     agent_picker_with_selection, close_deleted_thread_modal, count_of, editor_words,
 };
+use crate::ui::spinner::Spinner;
 use crate::ui::state::AppState;
 use crate::ui::views::{
     render_diff, render_empty_state, render_selection_tooltip, DiffRenderInput, Modal,
@@ -247,11 +248,10 @@ impl<'a> App<'a> {
         }
 
         if let Some(ref pr) = pr_info {
-            let mut spinner = Spinner::new(
-                spinners::Dots,
-                format!("Syncing viewed status for {} files", state.file_diffs.len()),
-                Color::Cyan,
-            );
+            let mut spinner = Spinner::new(format!(
+                "Syncing viewed status for {} files",
+                state.file_diffs.len()
+            ));
             sync_viewed_files_from_github(pr, &mut state);
             let viewed_count = state.viewed_files.len();
             spinner.success(&format!("{viewed_count} files marked as viewed"));
@@ -764,7 +764,7 @@ fn fetch_pr_with_spinner(pr_input: &str, origin: Option<&str>) -> Result<PrInfo,
         Some((_, _, number)) => format!("Fetching PR #{number}"),
         None => "Fetching PR".to_string(),
     };
-    let mut spinner = Spinner::new(spinners::Dots, spinner_msg, Color::Cyan);
+    let mut spinner = Spinner::new(spinner_msg);
     match fetch_pr_info(pr_input, origin) {
         Ok(pr_info) => {
             spinner.success("Fetched PR metadata");
@@ -811,11 +811,7 @@ pub fn run_workspace_diff_ui(
 
 pub fn run_diff_ui(mut options: DiffOptions, backend: &dyn VcsBackend) -> Result<(), LumiereError> {
     if options.detect_pr && options.pr.is_none() {
-        let mut spinner = Spinner::new(
-            spinners::Dots,
-            "Detecting PR for current branch",
-            Color::Cyan,
-        );
+        let mut spinner = Spinner::new("Detecting PR for current branch");
         match detect_current_branch_pr() {
             Ok(number) => {
                 spinner.success(&format!("Detected PR #{number}"));
