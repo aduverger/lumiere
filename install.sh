@@ -15,7 +15,9 @@ cleanup() {
     fi
 }
 
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 die() {
     printf 'error: %s\n' "$1" >&2
