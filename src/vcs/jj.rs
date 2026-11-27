@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use chrono::Local;
 use futures::{AsyncReadExt, StreamExt};
+use jiff::Zoned;
 use jj_lib::backend::{MergedTreeValue, TreeValue};
 use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
@@ -17,7 +17,7 @@ use jj_lib::conflicts::{
 use jj_lib::default_backend_factories::{
     default_backend_factories, default_working_copy_factories,
 };
-use jj_lib::files::FileMergeHunkLevel;
+use jj_lib::files::{FileMergeHunkLevel, MergeOptions};
 use jj_lib::fileset::FilesetAliasesMap;
 use jj_lib::matchers::EverythingMatcher;
 use jj_lib::merge::SameChange;
@@ -29,10 +29,8 @@ use jj_lib::revset::{
     RevsetWorkspaceContext, SymbolResolver, SymbolResolverExtension,
 };
 use jj_lib::settings::UserSettings;
-use jj_lib::time_util::DatePatternContext;
-use jj_lib::tree_merge::MergeOptions;
 use jj_lib::ui_path::RepoPathUiConverter;
-use jj_lib::workspace::Workspace;
+use jj_lib::workspace::{DefaultWorkspaceLoaderFactory, Workspace, WorkspaceLoaderFactory};
 use pollster::FutureExt;
 
 use super::backend::{StackedCommitInfo, VcsBackend, VcsError};
@@ -123,21 +121,23 @@ impl JjBackend {
     pub fn new(workspace_path: &Path) -> Result<Self, VcsError> {
         // Create minimal settings
         let config = StackedConfig::with_defaults();
-        let settings = UserSettings::from_config(config)
+        let settings = UserSettings::from_config_and_home_dir(config, dirs::home_dir())
             .map_err(|e| VcsError::Other(format!("failed to create settings: {}", e)))?;
 
         // Load workspace
-        let workspace = Workspace::load(
-            &settings,
-            workspace_path,
-            &default_backend_factories(),
-            &default_working_copy_factories(),
-        )
-        .map_err(|e| VcsError::Other(format!("failed to load workspace: {}", e)))?;
+        let loader = DefaultWorkspaceLoaderFactory
+            .create(workspace_path)
+            .map_err(|e| VcsError::Other(format!("failed to load workspace: {}", e)))?;
+        let workspace = loader
+            .load(
+                &settings,
+                &default_backend_factories(),
+                &default_working_copy_factories(),
+            )
+            .map_err(|e| VcsError::Other(format!("failed to load workspace: {}", e)))?;
 
         // Load repo at HEAD
         let repo = workspace
-            .repo_loader()
             .load_at_head()
             .block_on()
             .map_err(|e| VcsError::Other(format!("failed to load repo: {}", e)))?;
@@ -171,7 +171,7 @@ impl JjBackend {
             aliases_map: &RevsetAliasesMap::default(),
             local_variables: HashMap::new(),
             user_email: self.settings.user_email(),
-            date_pattern_context: DatePatternContext::from(Local::now()),
+            current_time: Zoned::now(),
             default_ignored_remote: None,
             fileset_aliases_map: &FilesetAliasesMap::default(),
             extensions: &RevsetExtensions::default(),
@@ -201,7 +201,7 @@ impl JjBackend {
                 .map_err(|e| format_ref_error(revset_str, &format!("resolution error: {}", e)))?;
 
             let revset = resolved
-                .evaluate(repo)
+                .evaluate()
                 .map_err(|e| VcsError::Other(format!("evaluation error: {}", e)))?;
 
             // Get the first commit
@@ -264,7 +264,7 @@ impl JjBackend {
         from_tree: &jj_lib::merged_tree::MergedTree,
         to_tree: &jj_lib::merged_tree::MergedTree,
     ) -> Vec<String> {
-        let diff_stream = from_tree.diff_stream(to_tree, &EverythingMatcher);
+        let diff_stream = from_tree.diff(to_tree, &EverythingMatcher);
         let entries: Vec<_> = async { diff_stream.collect().await }.block_on();
         entries
             .into_iter()
@@ -444,7 +444,7 @@ impl VcsBackend for JjBackend {
                 .map_err(|_| Self::format_range_error(from, to))?;
 
             let revset = resolved
-                .evaluate(repo)
+                .evaluate()
                 .map_err(|e| VcsError::Other(format!("evaluation error: {}", e)))?;
 
             let mut commits = Vec::new();

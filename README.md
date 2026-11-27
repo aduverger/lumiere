@@ -23,7 +23,7 @@
   <a href="https://github.com/aduverger/lumiere/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduverger/lumiere/ci.yml?branch=main&style=flat-square&label=CI" alt="CI" /></a>
   <a href="https://github.com/aduverger/lumiere/releases"><img src="https://img.shields.io/github/v/release/aduverger/lumiere?style=flat-square" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
-  <img src="https://img.shields.io/badge/rust-1.89%2B-orange?style=flat-square" alt="Rust 1.89+" />
+  <img src="https://img.shields.io/badge/rust-1.97.1%2B-orange?style=flat-square" alt="Rust 1.97.1+" />
 </p>
 
 Lumiere is a fast, side-by-side terminal diff viewer written in Rust for reviewing code alongside a coding agent. Open uncommitted work, a feature branch, a commit range, a GitHub PR, or a whole folder of repositories — comment directly on hunks or line selections, and watch your agent answer inside the same inline thread without leaving the review.
@@ -72,7 +72,7 @@ curl -fsSL https://lumiere.computer/install.sh | sh
 brew install aduverger/tap/lumiere
 ```
 
-### Cargo (Rust 1.89+)
+### Cargo (Rust 1.97.1+)
 
 ```bash
 cargo install lumiere-cli --locked

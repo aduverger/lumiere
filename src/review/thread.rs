@@ -63,10 +63,10 @@ impl Comment {
 
     #[cfg(feature = "jj")]
     pub fn format_time(&self) -> String {
-        use chrono::{DateTime, Local};
-        let created_at = UNIX_EPOCH + std::time::Duration::from_secs(self.created_at);
-        DateTime::<Local>::from(created_at)
-            .format("%H:%M")
+        let ts = jiff::Timestamp::from_second(self.created_at as i64)
+            .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
+        ts.to_zoned(jiff::tz::TimeZone::system())
+            .strftime("%H:%M")
             .to_string()
     }
 

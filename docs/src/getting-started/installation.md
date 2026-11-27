@@ -1,6 +1,6 @@
 # Installation
 
-Lumiere targets **Linux** and **macOS** and requires **Rust 1.89 or later** when building from source.
+Lumiere targets **Linux** and **macOS** and requires **Rust 1.97.1 or later** when building from source.
 
 <div class="install-tabs" data-install-tabs>
   <div class="install-tabs-bar" role="tablist" aria-label="Install method">
