@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>Review diffs in the terminal and discuss them live with your coding agent.</strong>
+  <strong>Review diffs in the terminal and discuss them live with your agent.</strong>
 </p>
 
 <p align="center">
@@ -113,7 +113,7 @@ How Lumiere compares to other interactive terminal code-review TUIs on **feature
 
 <sup>¹ `hunk` also supports Sapling (`sl`). ² Lumiere renders side-by-side and lets you focus one panel (`0` old, `-` new, `=` both).</sup>
 
-### Performance (`bench/bench.py`)
+### Performance
 
 Median of 5 runs on Linux (`aarch64`, 2 vCPU) using [`bench/bench.py`](bench/bench.py) against official release binaries (`lumiere 0.1.0`, `hunk 0.25.0`, `plannotator-tui 0.12.0`, `lumen 2.32.0`):
 
