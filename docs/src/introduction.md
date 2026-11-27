@@ -2,7 +2,7 @@
   <h1 class="sr-only">Lumiere</h1>
   <img class="hero-logo hero-logo-dark" src="assets/logo-wordmark.svg" alt="Lumiere" />
   <img class="hero-logo hero-logo-light" src="assets/light/logo-wordmark.svg" alt="Lumiere" />
-  <p>Review diffs in the terminal and discuss them live with your coding agent.</p>
+  <p>Review diffs in the terminal and discuss them live with your agent.</p>
 </div>
 
 **Lumiere** is a high-performance, side-by-side terminal diff viewer written in Rust. It is built for the modern code-review loop with coding agents: inspect uncommitted changes, feature branches, commit ranges, or GitHub pull requests, leave inline threaded comments directly on hunks or line selections, and converse with your agent inside the same thread without ever leaving the review.
