@@ -746,17 +746,27 @@ impl<'a> App<'a> {
 
     fn handle_mouse(&mut self, mouse: MouseEvent, term_size: Rect) {
         if self.active_modal.is_some() {
-            if self.annotation_editor.is_some()
-                && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-            {
-                dismiss_editor_on_outside_click(
-                    &mut self.state,
-                    &mut self.annotation_editor,
-                    &mut self.active_modal,
-                    mouse.column,
-                    mouse.row,
-                );
-                return;
+            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+                if self.annotation_editor.is_some() {
+                    dismiss_editor_on_outside_click(
+                        &mut self.state,
+                        &mut self.annotation_editor,
+                        &mut self.active_modal,
+                        mouse.column,
+                        mouse.row,
+                    );
+                    return;
+                }
+                if let Some(thread_id) = self
+                    .active_modal
+                    .as_ref()
+                    .and_then(|modal| modal.thread_reply_hit(mouse.column, mouse.row))
+                {
+                    if let Some(thread) = self.state.thread_by_id(thread_id) {
+                        self.annotation_editor = Some(AnnotationEditor::for_thread(thread));
+                    }
+                    return;
+                }
             }
             if let Some(ref mut modal) = self.active_modal {
                 modal.handle_mouse(mouse, term_size.width, term_size.height);
@@ -792,21 +802,18 @@ impl<'a> App<'a> {
                     return;
                 }
 
-                let hit_thread = self.state.annotation_rects.iter().find_map(|hit| {
-                    rect_contains(hit.area, mouse.column, mouse.row)
-                        .then(|| (hit.thread_id.clone(), hit.expand_rows.contains(&mouse.row)))
-                });
-                if let Some((id, clicked_expand)) = hit_thread {
-                    if let Some(thread) = self.state.thread_by_id(&id) {
-                        if clicked_expand {
-                            self.active_modal = Some(Modal::thread_view(
-                                thread.id.clone(),
-                                self.state.settings.tab_width,
-                                false,
-                            ));
-                        } else {
-                            self.annotation_editor = Some(AnnotationEditor::for_thread(thread));
-                        }
+                if let Some(hit) = self
+                    .state
+                    .annotation_rects
+                    .iter()
+                    .find(|hit| rect_contains(hit.area, mouse.column, mouse.row))
+                {
+                    if let Some(thread) = self.state.thread_by_id(&hit.thread_id) {
+                        self.active_modal = Some(Modal::thread_view(
+                            thread.id.clone(),
+                            self.state.settings.tab_width,
+                            false,
+                        ));
                     }
                     return;
                 }

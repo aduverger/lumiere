@@ -552,10 +552,7 @@ impl<'a> App<'a> {
         }
     }
 
-    fn draw<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> io::Result<()>
-    where
-        io::Error: From<B::Error>,
-    {
+    fn draw<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<(), B::Error> {
         if self.state.file_diffs.is_empty() {
             let repo_name = self
                 .workspace_session
@@ -916,7 +913,10 @@ pub fn run_diff_ui(mut options: DiffOptions, backend: &dyn VcsBackend) -> Result
 mod tests {
     use std::path::Path;
 
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
+    use ratatui::backend::TestBackend;
     use tempfile::TempDir;
 
     use super::*;
@@ -1138,5 +1138,69 @@ mod tests {
             }) => assert_eq!(*selected, 1),
             _ => panic!("expected agent picker select modal"),
         }
+    }
+
+    #[test]
+    fn test_clicking_inline_thread_opens_modal_and_reply_box_focuses_on_click_or_enter() {
+        let (dir, backend) = init_repo_with_diff();
+        let host: Arc<dyn AgentHost> = Arc::new(StubHost {
+            root: dir.path().to_path_buf(),
+        });
+        let mut app = test_app(&backend, host, dir.path());
+        let screen = Rect::new(0, 0, 120, 30);
+        let mut terminal = Terminal::new(TestBackend::new(screen.width, screen.height)).unwrap();
+
+        let (thread_id, _) = app.state.add_thread(
+            "a.rs".to_string(),
+            crate::review::AnnotationTarget::File,
+            "initial note".to_string(),
+        );
+        app.state.mark_sent(None);
+        app.draw(&mut terminal).unwrap();
+
+        let click = |column, row| {
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+
+        let thread_rect = app.state.annotation_rects[0].area;
+        app.handle_event(click(thread_rect.x + 2, thread_rect.y + 1), screen);
+        assert!(app.active_modal.as_ref().is_some_and(Modal::is_thread_view));
+        assert!(app.annotation_editor.is_none());
+
+        app.draw(&mut terminal).unwrap();
+        let reply_rect = match &app.active_modal {
+            Some(Modal {
+                content: ModalContent::ThreadView(view),
+            }) => {
+                assert_eq!(view.thread_id, thread_id);
+                view.last_reply_box_rect.get().expect("reply box rect")
+            }
+            _ => panic!("expected thread modal"),
+        };
+
+        app.handle_event(click(0, 0), screen);
+        assert!(app.active_modal.as_ref().is_some_and(Modal::is_thread_view));
+        assert!(app.annotation_editor.is_none());
+
+        app.handle_event(click(reply_rect.x + 2, reply_rect.y + 1), screen);
+        assert!(app.annotation_editor.is_some());
+
+        app.draw(&mut terminal).unwrap();
+        let editor_rect = app.state.editor_rect.expect("editor rect");
+        app.handle_event(click(editor_rect.x + 2, editor_rect.y - 1), screen);
+        assert!(app.annotation_editor.is_none());
+        assert!(app.active_modal.as_ref().is_some_and(Modal::is_thread_view));
+
+        app.handle_event(key(KeyCode::Enter, KeyModifiers::NONE), screen);
+        assert!(app.annotation_editor.is_some());
+
+        app.handle_event(key(KeyCode::Esc, KeyModifiers::NONE), screen);
+        assert!(app.annotation_editor.is_none());
+        assert!(app.active_modal.as_ref().is_some_and(Modal::is_thread_view));
     }
 }

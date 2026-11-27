@@ -9,6 +9,7 @@ use ratatui::{
 };
 
 use crate::review::Thread;
+use crate::ui::coordinates::rect_contains;
 use crate::ui::editor::AnnotationEditor;
 use crate::ui::markdown::{render_code_snippet, render_comment_rows, truncate_with_ellipsis};
 use crate::ui::theme;
@@ -25,6 +26,7 @@ pub struct ThreadViewState {
     pub last_max_scroll: Cell<usize>,
     pub last_visible_height: Cell<usize>,
     pub last_editor_rect: Cell<Option<Rect>>,
+    pub last_reply_box_rect: Cell<Option<Rect>>,
 }
 
 impl ThreadViewState {
@@ -38,7 +40,14 @@ impl ThreadViewState {
             last_max_scroll: Cell::new(0),
             last_visible_height: Cell::new(0),
             last_editor_rect: Cell::new(None),
+            last_reply_box_rect: Cell::new(None),
         }
+    }
+
+    pub fn reply_box_contains(&self, column: u16, row: u16) -> bool {
+        self.last_reply_box_rect
+            .get()
+            .is_some_and(|rect| rect_contains(rect, column, row))
     }
 
     pub fn scroll_by(&mut self, delta: isize) {
@@ -98,7 +107,7 @@ impl ThreadViewState {
                 self.pinned_to_bottom = true;
                 None
             }
-            KeyCode::Char('i') => Some(ModalResult::ThreadReply {
+            KeyCode::Char('i') | KeyCode::Enter => Some(ModalResult::ThreadReply {
                 thread_id: self.thread_id.clone(),
             }),
             KeyCode::Char('x') => Some(ModalResult::ThreadToggleResolved {
@@ -168,13 +177,24 @@ impl ThreadViewState {
             .border_style(Style::default().fg(t.ui.border_focused))
             .style(Style::default().bg(t.ui.bg));
 
-        let inner = block.inner(area);
+        let block_inner = block.inner(area);
         frame.render_widget(block, area);
+        let inner = if block_inner.height >= 4 {
+            Rect::new(
+                block_inner.x,
+                block_inner.y + 1,
+                block_inner.width,
+                block_inner.height - 1,
+            )
+        } else {
+            block_inner
+        };
 
         if inner.height == 0 || inner.width == 0 {
             self.last_max_scroll.set(0);
             self.last_visible_height.set(0);
             self.last_editor_rect.set(None);
+            self.last_reply_box_rect.set(None);
             return;
         }
 
@@ -191,14 +211,30 @@ impl ThreadViewState {
                 .split(inner);
             ed.render_inline(frame, chunks[1], t.ui.highlight, t.ui.bg, false);
             self.last_editor_rect.set(Some(chunks[1]));
+            self.last_reply_box_rect.set(None);
             (chunks[0], None)
         } else {
             self.last_editor_rect.set(None);
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Min(1), Constraint::Length(1)])
-                .split(inner);
-            (chunks[0], Some(chunks[1]))
+            if inner.height >= 5 && inner.width >= 5 {
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Min(1),
+                        Constraint::Length(3),
+                        Constraint::Length(1),
+                    ])
+                    .split(inner);
+                render_reply_placeholder(frame, chunks[1], thread.draft().is_some());
+                self.last_reply_box_rect.set(Some(chunks[1]));
+                (chunks[0], Some(chunks[2]))
+            } else {
+                self.last_reply_box_rect.set(None);
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Min(1), Constraint::Length(1)])
+                    .split(inner);
+                (chunks[0], Some(chunks[1]))
+            }
         };
 
         let text_width = comments_area.width.saturating_sub(3).max(1) as usize;
@@ -291,7 +327,7 @@ impl ThreadViewState {
                 Span::styled("j/k", muted),
                 Span::styled(" scroll  ", muted),
                 sep.clone(),
-                Span::styled("i", muted),
+                Span::styled("i/enter", muted),
                 Span::styled(" reply  ", muted),
                 sep.clone(),
                 Span::styled("x", muted),
@@ -316,4 +352,44 @@ impl ThreadViewState {
             );
         }
     }
+}
+
+fn render_reply_placeholder(frame: &mut Frame, area: Rect, has_draft: bool) {
+    if area.height < 3 || area.width < 5 {
+        return;
+    }
+
+    let t = theme::get();
+    let border_style = Style::default().fg(t.ui.border_unfocused);
+    let row_bg = Style::default().bg(t.ui.bg);
+    let border_width = area.width.saturating_sub(3) as usize;
+    let inner_width = area.width.saturating_sub(4) as usize;
+
+    let label = if has_draft {
+        "Edit queued draft... (i / enter)"
+    } else {
+        "Reply... (i / enter)"
+    };
+    let placeholder = truncate_with_ellipsis(label, inner_width);
+    let pad = inner_width.saturating_sub(Span::raw(&placeholder).width());
+
+    let lines = vec![
+        Line::from(vec![
+            Span::raw(" "),
+            Span::styled(format!("┌{}┐", "─".repeat(border_width)), border_style),
+        ]),
+        Line::from(vec![
+            Span::raw(" "),
+            Span::styled("│ ", border_style),
+            Span::styled(placeholder, Style::default().fg(t.ui.text_muted).italic()),
+            Span::raw(" ".repeat(pad)),
+            Span::styled("│", border_style),
+        ]),
+        Line::from(vec![
+            Span::raw(" "),
+            Span::styled(format!("└{}┘", "─".repeat(border_width)), border_style),
+        ]),
+    ];
+
+    frame.render_widget(Paragraph::new(lines).style(row_bg), area);
 }

@@ -140,6 +140,21 @@ fn rounded_block(title: &str, focused_border: bool) -> Block<'static> {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(border_color))
+        .style(Style::default().bg(t.ui.bg))
+}
+
+fn dim_backdrop(frame: &mut Frame, area: Rect) {
+    let t = theme::get();
+    let buf = frame.buffer_mut();
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            if let Some(cell) = buf.cell_mut(Position::new(x, y)) {
+                cell.set_fg(t.ui.text_muted);
+                cell.set_bg(t.ui.bg);
+                cell.modifier = Modifier::DIM;
+            }
+        }
+    }
 }
 
 impl Modal {
@@ -248,6 +263,15 @@ impl Modal {
         }
     }
 
+    pub fn thread_reply_hit(&self, column: u16, row: u16) -> Option<&str> {
+        match &self.content {
+            ModalContent::ThreadView(view) if view.reply_box_contains(column, row) => {
+                Some(view.thread_id.as_str())
+            }
+            _ => None,
+        }
+    }
+
     pub fn render(&self, frame: &mut Frame, threads: &[Thread], editor: Option<&AnnotationEditor>) {
         let area = frame.area();
 
@@ -319,6 +343,7 @@ impl Modal {
         let modal_y = area.height.saturating_sub(modal_height) / 2;
         let modal_area = Rect::new(modal_x, modal_y, modal_width, modal_height);
 
+        dim_backdrop(frame, area);
         frame.render_widget(Clear, modal_area);
 
         match &self.content {
@@ -375,6 +400,7 @@ impl Modal {
                     view.last_max_scroll.set(0);
                     view.last_visible_height.set(0);
                     view.last_editor_rect.set(None);
+                    view.last_reply_box_rect.set(None);
                 }
             }
             ModalContent::GlobalSearch { .. } => unreachable!(),
@@ -1051,7 +1077,17 @@ mod tests {
         assert!(initial.contains("src/app.rs:L10-19 [new] · 8 comments"));
         assert!(initial.contains("comment-08 body line"));
         assert!(!initial.contains("comment-01 opening"));
+        assert!(initial.contains("Reply... (i / enter)"));
         assert!(modal.editor_rect().is_none());
+        let reply_rect = match &modal.content {
+            ModalContent::ThreadView(view) => view.last_reply_box_rect.get().expect("reply rect"),
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            modal.thread_reply_hit(reply_rect.x + 2, reply_rect.y + 1),
+            Some(thread.id.as_str())
+        );
+        assert_eq!(modal.thread_reply_hit(0, 0), None);
 
         modal.handle_input(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), 20);
         let at_top = drawn_with_editor(&modal, std::slice::from_ref(&thread), None, 90, 20);
@@ -1079,6 +1115,10 @@ mod tests {
             Some(ModalResult::ThreadReply { ref thread_id }) if thread_id == &thread.id
         ));
         assert!(matches!(
+            modal.handle_input(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), 20),
+            Some(ModalResult::ThreadReply { ref thread_id }) if thread_id == &thread.id
+        ));
+        assert!(matches!(
             modal.handle_input(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE), 20),
             Some(ModalResult::ThreadToggleResolved { ref thread_id }) if thread_id == &thread.id
         ));
@@ -1097,13 +1137,65 @@ mod tests {
         modal.pin_thread_to_bottom();
         let live_reply = drawn_with_editor(&modal, std::slice::from_ref(&thread), None, 90, 24);
         assert!(live_reply.contains("unsent draft text"));
+        assert!(live_reply.contains("Edit queued draft... (i / enter)"));
 
         let editor = AnnotationEditor::for_thread(&thread);
         let with_editor =
             drawn_with_editor(&modal, std::slice::from_ref(&thread), Some(&editor), 90, 24);
         assert!(modal.editor_rect().is_some());
+        assert_eq!(
+            modal.thread_reply_hit(reply_rect.x + 2, reply_rect.y + 1),
+            None
+        );
         assert!(with_editor.contains("Enter send"));
         assert!(with_editor.contains("comment-08 body line"));
         assert_eq!(with_editor.matches("unsent draft text").count(), 1);
+    }
+
+    #[test]
+    fn test_floating_modal_dims_backdrop_and_pads_thread_top() {
+        let t = theme::get();
+        let thread = Thread::new(
+            "src/app.rs".to_string(),
+            AnnotationTarget::File,
+            None,
+            Comment::human("hello".to_string(), false),
+        );
+        let modal = Modal::thread_view(thread.id.clone(), 4, false);
+        let mut terminal = Terminal::new(TestBackend::new(80, 20)).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                frame.render_widget(
+                    Paragraph::new("bg").style(
+                        Style::default()
+                            .fg(t.ui.status_added)
+                            .bg(t.diff.added_bg)
+                            .bold(),
+                    ),
+                    area,
+                );
+                modal.render(frame, std::slice::from_ref(&thread), None);
+            })
+            .expect("draw");
+
+        let buf = terminal.backend().buffer();
+        let outside = buf.cell((0, 0)).unwrap();
+        assert_eq!(outside.fg, t.ui.text_muted);
+        assert_eq!(outside.bg, t.ui.bg);
+        assert_eq!(outside.modifier, Modifier::DIM);
+
+        let (modal_x, modal_y) = (0..20u16)
+            .find_map(|y| {
+                (0..80u16).find_map(|x| (buf.cell((x, y))?.symbol() == "╭").then_some((x, y)))
+            })
+            .expect("modal top-left border");
+        let modal_right = (modal_x..80u16)
+            .find(|&x| buf.cell((x, modal_y)).is_some_and(|c| c.symbol() == "╮"))
+            .expect("modal top-right border");
+        let top_pad_row = modal_y + 1;
+        for x in (modal_x + 1)..modal_right {
+            assert_eq!(buf.cell((x, top_pad_row)).unwrap().symbol(), " ");
+        }
     }
 }

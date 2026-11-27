@@ -1241,7 +1241,7 @@ mod tests {
     }
 
     #[test]
-    fn test_render_diff_long_inline_thread_records_expand_row() {
+    fn test_render_diff_long_inline_thread_records_hit_rect() {
         let mut state = AppState::new(
             vec![FileDiff::from_contents(
                 "a.rs".into(),
@@ -1260,7 +1260,7 @@ mod tests {
         assert!(screen.contains("earlier comment"));
         assert_eq!(output.annotation_rects.len(), 1);
         assert_eq!(output.annotation_rects[0].thread_id, id);
-        assert!(!output.annotation_rects[0].expand_rows.is_empty());
+        assert!(output.annotation_rects[0].area.height >= 3);
     }
 
     #[test]
