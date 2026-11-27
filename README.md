@@ -1,6 +1,10 @@
-<p align="center"><img src="assets/logo.svg" width="104" alt="Lumiere logo" /></p>
-
-<h1 align="center">Lumiere</h1>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-wordmark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="assets/light/logo-wordmark.svg" />
+    <img src="assets/light/logo-wordmark.svg" width="360" alt="Lumiere" />
+  </picture>
+</p>
 
 <p align="center">
   <strong>Review diffs in the terminal and discuss them live with your coding agent.</strong>

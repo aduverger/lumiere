@@ -1,11 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Lumiere">
-  <rect width="128" height="128" rx="28" fill="#16161d"/>
-  <!-- Old side: an outline. New side: lit. The gap is the divider of a side-by-side diff. -->
-  <path d="M60 36a28 28 0 0 0 0 56z" fill="none" stroke="#6b6f85" stroke-width="5" stroke-linejoin="round"/>
-  <path d="M68 36a28 28 0 0 1 0 56z" fill="#ffc857"/>
-  <g stroke="#ffc857" stroke-width="5" stroke-linecap="round">
-    <path d="M106 64h8"/>
-    <path d="M98 36l6-6"/>
-    <path d="M98 92l6 6"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56" width="56" height="56" role="img" aria-label="Lumiere symbol"><title>Lumiere symbol</title><g transform="translate(4.5 2)"><path fill="#E9E5D8" d="M17 3H30L25 15H12Z M10 20H23L18 32H5Z M3 37H16L11 49H-2Z"/><path fill="#F0B849" d="M36 3H49L41 22L25 28Z M23 33L39 27L30 49H17Z"/></g></svg>

@@ -1,6 +1,7 @@
 <div class="hero">
-  <img src="assets/logo.svg" alt="Lumiere logo" />
-  <h1>Lumiere</h1>
+  <h1 class="sr-only">Lumiere</h1>
+  <img class="hero-logo hero-logo-dark" src="assets/logo-wordmark.svg" alt="Lumiere" />
+  <img class="hero-logo hero-logo-light" src="assets/light/logo-wordmark.svg" alt="Lumiere" />
   <p>Review diffs in the terminal and discuss them live with your coding agent.</p>
 </div>
 

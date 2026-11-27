@@ -31,7 +31,7 @@ THEMES = {
         "grid": "#e5e7eb",
         "divider": "#e5e7eb",
         "bars": {
-            "lumiere": ("#e09f1f", "1"),
+            "lumiere": ("#b67b15", "1"),
             "plannotator-tui": ("#7c3aed", "0.72"),
             "hunk": ("#16a34a", "0.72"),
             "lumen": ("#94a3b8", "0.72"),
@@ -49,7 +49,7 @@ THEMES = {
         "grid": "#21262d",
         "divider": "#30363d",
         "bars": {
-            "lumiere": ("#ffc857", "1"),
+            "lumiere": ("#f0b849", "1"),
             "plannotator-tui": ("#a78bfa", "0.75"),
             "hunk": ("#4ade80", "0.72"),
             "lumen": ("#6e7681", "0.75"),
