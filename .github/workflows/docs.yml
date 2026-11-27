@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "install.sh"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
+      - "install.sh"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -38,6 +40,10 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Build book
         run: mdbook build docs
+      - name: Include install script
+        run: |
+          sh -n install.sh
+          cp install.sh docs/book/install.sh
       - name: Setup Pages
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/configure-pages@v6

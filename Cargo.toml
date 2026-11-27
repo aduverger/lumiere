@@ -18,6 +18,7 @@ exclude = [
   "plan-*.md",
   "flake.nix",
   "flake.lock",
+  "install.sh",
   ".github/",
   "release-plz.toml",
 ]

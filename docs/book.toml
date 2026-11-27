@@ -16,6 +16,7 @@ git-repository-url = "https://github.com/aduverger/lumiere"
 git-repository-icon = "fa-github"
 edit-url-template = "https://github.com/aduverger/lumiere/edit/main/docs/{path}"
 additional-css = ["theme/custom.css"]
+additional-js = ["theme/install-tabs.js"]
 no-section-label = false
 
 [output.html.fold]
