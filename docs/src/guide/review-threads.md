@@ -10,7 +10,7 @@ When you press <kbd>i</kbd> to comment, Lumiere picks the target automatically u
 2. **Focused hunk** — if no lines are selected, attaches to the changed lines of the focused hunk (`New` side by default, `Old` side for pure deletions or when viewing only the Old panel via <kbd>0</kbd>).
 3. **Whole file** — if neither lines nor a hunk are focused, attaches a file-level thread pinned at the top of the diff.
 
-If an open thread already overlaps the target lines, pressing <kbd>i</kbd> continues that thread (editing your unsent draft if one exists, or starting a reply if everything was already sent). Clicking an inline thread box also opens the reply/draft editor directly.
+If an open thread already overlaps the target lines, pressing <kbd>i</kbd> continues that thread (editing your unsent draft if one exists, or starting a reply if everything was already sent). Clicking an inline thread opens it in the focused Thread View modal.
 
 ## Writing, sending, and queueing comments
 
@@ -35,11 +35,11 @@ Inline thread boxes stay compact so they never overwhelm the diff:
 
 - Older comments fold into `⋯ N earlier comments (t to view)`.
 - Very long single comments fold trailing lines into `⋯ N more lines (t to view)`.
-- Press <kbd>t</kbd> on a thread (or click any `⋯` indicator row) to open the **focused Thread View modal**:
+- Press <kbd>t</kbd> on a thread (or click anywhere on an inline thread) to open the **focused Thread View modal**:
   - Displays up to 8 lines of syntax-highlighted anchored code at the top.
   - Renders full CommonMark comments including headings, **bold**, *italic*, ~~strikethrough~~, bullet/numbered/task lists, blockquotes, links, inline code, and fenced code blocks highlighted with Tree-sitter (falling back to the reviewed file's language when a fence is untagged).
-  - Opens pinned to the latest reply; scroll with <kbd>j</kbd>/<kbd>k</kbd>, arrows, <kbd>PageUp</kbd>/<kbd>PageDown</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>/<kbd>G</kbd>, or the mouse wheel.
-  - Press <kbd>i</kbd> inside the modal to dock the reply editor at the bottom while keeping the conversation readable above.
+  - Opens pinned to the latest reply with an unfocused reply box docked at the bottom; scroll with <kbd>j</kbd>/<kbd>k</kbd>, arrows, <kbd>PageUp</kbd>/<kbd>PageDown</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>/<kbd>G</kbd>, or the mouse wheel.
+  - Press <kbd>i</kbd>, <kbd>Enter</kbd>, or click the reply box inside the modal to focus the reply editor while keeping the conversation readable above.
 
 ## Resolving and browsing threads
 

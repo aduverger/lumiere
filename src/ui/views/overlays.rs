@@ -14,7 +14,6 @@ pub enum OverlaySlot<'a, 'e> {
     Saved {
         thread: &'a Thread,
         rows: Vec<Line<'static>>,
-        expand_rows: Vec<usize>,
     },
     Editor(&'e AnnotationEditor<'e>),
 }
@@ -81,7 +80,7 @@ pub fn build_slots<'a, 'e>(
             open_file_threads,
             editor_in_thread.map(AnnotationEditor::desired_height),
         );
-        let rendered = thread_rows(
+        let rows = thread_rows(
             thread,
             edited_comment,
             rows_width,
@@ -89,12 +88,8 @@ pub fn build_slots<'a, 'e>(
             ctx.tab_width,
             ctx.theme,
         );
-        if !rendered.rows.is_empty() {
-            slots.push(OverlaySlot::Saved {
-                thread,
-                rows: rendered.rows,
-                expand_rows: rendered.expand_rows,
-            });
+        if !rows.is_empty() {
+            slots.push(OverlaySlot::Saved { thread, rows });
         }
         if let Some(e) = editor_in_thread {
             slots.push(OverlaySlot::Editor(e));
@@ -133,11 +128,6 @@ fn inline_thread_max_rows(
     }
 }
 
-struct RenderedThread {
-    rows: Vec<Line<'static>>,
-    expand_rows: Vec<usize>,
-}
-
 fn truncation_indicator_row(
     count: usize,
     singular_label: &str,
@@ -165,17 +155,14 @@ fn thread_rows(
     max_rows: usize,
     tab_width: usize,
     t: &theme::Theme,
-) -> RenderedThread {
+) -> Vec<Line<'static>> {
     let comments: Vec<_> = thread
         .comments
         .iter()
         .filter(|comment| Some(comment.id.as_str()) != edited_comment)
         .collect();
     let Some(first_comment) = comments.first() else {
-        return RenderedThread {
-            rows: Vec::new(),
-            expand_rows: Vec::new(),
-        };
+        return Vec::new();
     };
     let muted = Style::default().fg(t.ui.text_muted);
 
@@ -187,20 +174,16 @@ fn thread_rows(
         );
         let summary = truncate_with_ellipsis(&summary, width);
         let pad = width.saturating_sub(Span::raw(&summary).width());
-        return RenderedThread {
-            rows: vec![Line::from(Span::styled(
-                format!("{summary}{}", " ".repeat(pad)),
-                muted,
-            ))],
-            expand_rows: Vec::new(),
-        };
+        return vec![Line::from(Span::styled(
+            format!("{summary}{}", " ".repeat(pad)),
+            muted,
+        ))];
     }
 
     let border = Style::default().fg(t.ui.highlight);
     let inner_width = width.saturating_sub(2);
     let text_width = inner_width.saturating_sub(1);
     let mut rows = Vec::new();
-    let mut expand_rows = Vec::new();
 
     let mut badges = Vec::new();
     if thread.outdated {
@@ -262,7 +245,6 @@ fn thread_rows(
 
         if kept_from_end > 0 {
             let hidden_comments = rendered_comments.len() - kept_from_end;
-            expand_rows.push(rows.len());
             rows.push(boxed(truncation_indicator_row(
                 hidden_comments,
                 "earlier comment",
@@ -278,7 +260,6 @@ fn thread_rows(
             let hidden_comments = rendered_comments.len().saturating_sub(1);
             let mut remaining = max_inner;
             if hidden_comments > 0 && remaining > 0 {
-                expand_rows.push(rows.len());
                 rows.push(boxed(truncation_indicator_row(
                     hidden_comments,
                     "earlier comment",
@@ -294,7 +275,6 @@ fn thread_rows(
                     rows.push(boxed(row.clone()));
                 }
                 if hidden_lines > 0 {
-                    expand_rows.push(rows.len());
                     rows.push(boxed(truncation_indicator_row(
                         hidden_lines,
                         "more line",
@@ -310,7 +290,7 @@ fn thread_rows(
         format!("└{}┘", "─".repeat(inner_width)),
         border,
     )));
-    RenderedThread { rows, expand_rows }
+    rows
 }
 
 pub fn compute_target_index_ranges(
@@ -389,11 +369,7 @@ pub fn render_overlay_slot(
         !target.suppress_gutter && matches!(slot.target(), AnnotationTarget::LineRange { .. });
 
     match slot {
-        OverlaySlot::Saved {
-            thread,
-            rows,
-            expand_rows,
-        } => {
+        OverlaySlot::Saved { thread, rows } => {
             frame.render_widget(Clear, area);
             let gutter = if has_gutter { "▍" } else { " " };
             let lines: Vec<Line> = rows
@@ -409,16 +385,9 @@ pub fn render_overlay_slot(
                 Paragraph::new(lines).style(Style::default().bg(t.ui.bg)),
                 area,
             );
-            let visible_expand_rows = expand_rows
-                .iter()
-                .copied()
-                .filter(|&row_idx| row_idx < available)
-                .map(|row_idx| screen_y + row_idx as u16)
-                .collect();
             annotation_rects.push(ThreadHitRect {
                 thread_id: thread.id.clone(),
                 area,
-                expand_rows: visible_expand_rows,
             });
         }
         OverlaySlot::Editor(editor) => {
@@ -451,10 +420,9 @@ mod tests {
             ),
         );
         let width = 30;
-        let rendered = thread_rows(&thread, None, width, 40, 4, t);
-        assert!(rendered.rows.len() >= 7);
-        assert!(rendered.expand_rows.is_empty());
-        for (idx, row) in rendered.rows.iter().enumerate() {
+        let rows = thread_rows(&thread, None, width, 40, 4, t);
+        assert!(rows.len() >= 7);
+        for (idx, row) in rows.iter().enumerate() {
             assert_eq!(row.width(), width, "row {idx} misaligned");
             for span in &row.spans {
                 assert!(!span.content.contains('\n') && !span.content.contains('\r'));
@@ -463,8 +431,7 @@ mod tests {
 
         thread.resolved = true;
         let resolved = thread_rows(&thread, None, width, 40, 4, t);
-        assert_eq!(resolved.rows.len(), 1);
-        assert!(resolved.expand_rows.is_empty());
+        assert_eq!(resolved.len(), 1);
     }
 
     #[test]
@@ -489,14 +456,13 @@ mod tests {
         ));
 
         let width = 46;
-        let rendered = thread_rows(&thread, None, width, 7, 4, t);
-        assert_eq!(rendered.rows.len(), 7);
-        assert_eq!(rendered.expand_rows, vec![1]);
-        for (idx, row) in rendered.rows.iter().enumerate() {
+        let rows = thread_rows(&thread, None, width, 7, 4, t);
+        assert_eq!(rows.len(), 7);
+        for (idx, row) in rows.iter().enumerate() {
             assert_eq!(row.width(), width, "row {idx} misaligned");
         }
 
-        let texts: Vec<String> = rendered.rows.iter().map(line_text).collect();
+        let texts: Vec<String> = rows.iter().map(line_text).collect();
         assert!(texts[1].contains("⋯ 2 earlier comments (t to view)"));
         let all = texts.join("\n");
         assert!(!all.contains("first comment"));
@@ -522,9 +488,8 @@ mod tests {
 
         let width = 46;
         let single = thread_rows(&thread, None, width, 8, 4, t);
-        assert_eq!(single.rows.len(), 8);
-        assert_eq!(single.expand_rows, vec![6]);
-        let single_texts: Vec<String> = single.rows.iter().map(line_text).collect();
+        assert_eq!(single.len(), 8);
+        let single_texts: Vec<String> = single.iter().map(line_text).collect();
         assert!(!single_texts.join("\n").contains("earlier comment"));
         assert!(single_texts[1].contains("pi"));
         assert!(single_texts[2].contains("line 01"));
@@ -535,9 +500,8 @@ mod tests {
             .comments
             .insert(0, Comment::human("short opener".to_string(), false));
         let multi = thread_rows(&thread, None, width, 8, 4, t);
-        assert_eq!(multi.rows.len(), 8);
-        assert_eq!(multi.expand_rows, vec![1, 6]);
-        let multi_texts: Vec<String> = multi.rows.iter().map(line_text).collect();
+        assert_eq!(multi.len(), 8);
+        let multi_texts: Vec<String> = multi.iter().map(line_text).collect();
         assert!(multi_texts[1].contains("⋯ 1 earlier comment (t to view)"));
         assert!(multi_texts[6].contains("⋯ 12 more lines (t to view)"));
     }

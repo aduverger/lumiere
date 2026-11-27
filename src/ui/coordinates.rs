@@ -2,13 +2,11 @@ use ratatui::layout::Rect;
 
 use crate::diff::{DiffFullscreen, DiffLine, DiffPanelFocus};
 
-/// Screen rect of a rendered inline thread overlay, plus the screen `y` rows of
-/// any `⋯` truncation indicators inside it (clicking those opens the thread modal).
+/// Screen rect of a rendered inline thread overlay (clicking opens the thread modal).
 #[derive(Clone, Debug)]
 pub struct ThreadHitRect {
     pub thread_id: String,
     pub area: Rect,
-    pub expand_rows: Vec<u16>,
 }
 
 pub fn rect_contains(rect: Rect, column: u16, row: u16) -> bool {

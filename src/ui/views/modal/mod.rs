@@ -248,6 +248,15 @@ impl Modal {
         }
     }
 
+    pub fn thread_reply_hit(&self, column: u16, row: u16) -> Option<&str> {
+        match &self.content {
+            ModalContent::ThreadView(view) if view.reply_box_contains(column, row) => {
+                Some(view.thread_id.as_str())
+            }
+            _ => None,
+        }
+    }
+
     pub fn render(&self, frame: &mut Frame, threads: &[Thread], editor: Option<&AnnotationEditor>) {
         let area = frame.area();
 
@@ -375,6 +384,7 @@ impl Modal {
                     view.last_max_scroll.set(0);
                     view.last_visible_height.set(0);
                     view.last_editor_rect.set(None);
+                    view.last_reply_box_rect.set(None);
                 }
             }
             ModalContent::GlobalSearch { .. } => unreachable!(),
@@ -1051,7 +1061,17 @@ mod tests {
         assert!(initial.contains("src/app.rs:L10-19 [new] · 8 comments"));
         assert!(initial.contains("comment-08 body line"));
         assert!(!initial.contains("comment-01 opening"));
+        assert!(initial.contains("Reply... (i / enter)"));
         assert!(modal.editor_rect().is_none());
+        let reply_rect = match &modal.content {
+            ModalContent::ThreadView(view) => view.last_reply_box_rect.get().expect("reply rect"),
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            modal.thread_reply_hit(reply_rect.x + 2, reply_rect.y + 1),
+            Some(thread.id.as_str())
+        );
+        assert_eq!(modal.thread_reply_hit(0, 0), None);
 
         modal.handle_input(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), 20);
         let at_top = drawn_with_editor(&modal, std::slice::from_ref(&thread), None, 90, 20);
@@ -1079,6 +1099,10 @@ mod tests {
             Some(ModalResult::ThreadReply { ref thread_id }) if thread_id == &thread.id
         ));
         assert!(matches!(
+            modal.handle_input(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), 20),
+            Some(ModalResult::ThreadReply { ref thread_id }) if thread_id == &thread.id
+        ));
+        assert!(matches!(
             modal.handle_input(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE), 20),
             Some(ModalResult::ThreadToggleResolved { ref thread_id }) if thread_id == &thread.id
         ));
@@ -1097,11 +1121,16 @@ mod tests {
         modal.pin_thread_to_bottom();
         let live_reply = drawn_with_editor(&modal, std::slice::from_ref(&thread), None, 90, 24);
         assert!(live_reply.contains("unsent draft text"));
+        assert!(live_reply.contains("Edit queued draft... (i / enter)"));
 
         let editor = AnnotationEditor::for_thread(&thread);
         let with_editor =
             drawn_with_editor(&modal, std::slice::from_ref(&thread), Some(&editor), 90, 24);
         assert!(modal.editor_rect().is_some());
+        assert_eq!(
+            modal.thread_reply_hit(reply_rect.x + 2, reply_rect.y + 1),
+            None
+        );
         assert!(with_editor.contains("Enter send"));
         assert!(with_editor.contains("comment-08 body line"));
         assert_eq!(with_editor.matches("unsent draft text").count(), 1);

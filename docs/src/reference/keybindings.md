@@ -68,7 +68,7 @@ Press <kbd>?</kbd> anywhere in Lumiere to open the interactive, scrollable keybi
 | <kbd>Enter</kbd> *(in editor)* | Save comment and send immediately to the attached agent |
 | <kbd>Alt+Enter</kbd> / <kbd>Ctrl+S</kbd> *(in editor)* | Save comment as queued |
 | <kbd>Shift+Enter</kbd> / <kbd>Ctrl+J</kbd> *(in editor)* | Insert newline |
-| <kbd>t</kbd> | Open thread at cursor in focused scrollable Thread View modal |
+| <kbd>t</kbd> | Open thread at cursor in focused scrollable Thread View modal (<kbd>i</kbd>, <kbd>Enter</kbd>, or click reply box to reply) |
 | <kbd>x</kbd> | Resolve or reopen thread at cursor |
 | <kbd>I</kbd> | Open Threads list (<kbd>Enter</kbd> open, <kbd>g</kbd> jump, <kbd>e</kbd> edit/reply, <kbd>x</kbd> resolve, <kbd>r</kbd> show/hide resolved, <kbd>d</kbd> delete) |
 | <kbd>s</kbd> | Send all queued comments (or export to stdout when no agent is attached) |
